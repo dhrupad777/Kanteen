@@ -1,3 +1,4 @@
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
@@ -8,13 +9,13 @@ import { getAnalytics } from "firebase/analytics";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyD8-YXP-aTCVzUPipIZgzSW_Vy6yeEiogQ",
-  authDomain: "kanteen-blr.firebaseapp.com",
-  projectId: "kanteen-blr",
-  storageBucket: "kanteen-blr.firebasestorage.app",
-  messagingSenderId: "325547619001",
-  appId: "1:325547619001:web:63bc435b8abf8c5a042168",
-  measurementId: "G-459CHSXHH3"
+  apiKey: "AIzaSyDXkt7jhkENyEejYbKFZNQzuX4uyru269I",
+  authDomain: "kanteen-gm6uq.firebaseapp.com",
+  projectId: "kanteen-gm6uq",
+  storageBucket: "kanteen-gm6uq.firebasestorage.app",
+  messagingSenderId: "190244278779",
+  appId: "1:190244278779:web:db66a2136dcae7db45bb5e",
+  measurementId: "G-9FCB95HMZ5"
 };
 
 
