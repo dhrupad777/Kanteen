@@ -9,7 +9,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -130,12 +129,6 @@ export default function LoginPage() {
                 </Button>
               </form>
             </Form>
-              <div className="mt-4 text-center text-sm">
-                Need to create an account?{" "}
-                <Link href="/signup" className="underline">
-                  Sign up
-                </Link>
-              </div>
           </CardContent>
         </Card>
       </div>
