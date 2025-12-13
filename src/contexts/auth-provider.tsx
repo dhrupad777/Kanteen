@@ -3,9 +3,9 @@
 
 import type { ReactNode } from "react";
 import React, { createContext, useState, useEffect } from 'react';
-import { signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut, User, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import type { UserProfile } from "@/types";
 
 interface AuthContextType {
@@ -13,6 +13,7 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<any>;
+  signUpWithEmail: (email: string, password: string, name: string) => Promise<any>;
   signOutUser: () => Promise<void>;
 }
 
@@ -55,6 +56,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return signInWithEmailAndPassword(auth, email, password);
   };
 
+  const signUpWithEmail = async (email: string, password: string, name: string) => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    
+    // Create a user profile document in Firestore
+    const userRef = doc(db, "users", user.uid);
+    await setDoc(userRef, {
+      uid: user.uid,
+      name: name,
+      email: user.email,
+      role: 'manager'
+    });
+
+    return userCredential;
+  };
+
   const signOutUser = () => {
     return signOut(auth);
   };
@@ -64,6 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     userProfile,
     loading,
     signInWithEmail,
+    signUpWithEmail,
     signOutUser,
   };
 

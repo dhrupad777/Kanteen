@@ -88,7 +88,7 @@ export default function LoginPage() {
               Enter your credentials to access the order manager dashboard.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
@@ -130,6 +130,12 @@ export default function LoginPage() {
                 </Button>
               </form>
             </Form>
+              <div className="mt-4 text-center text-sm">
+                Need to create an account?{" "}
+                <Link href="/signup" className="underline">
+                  Sign up
+                </Link>
+              </div>
           </CardContent>
         </Card>
       </div>
