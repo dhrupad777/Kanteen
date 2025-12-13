@@ -59,11 +59,7 @@ export default function LoginPage() {
       await signInWithEmail(values.email, values.password);
       router.push('/staff');
     } catch (error: any) {
-        console.error("AUTH ERROR (raw):", error);
-        console.error("AUTH ERROR code:", error?.code);
-        console.error("AUTH ERROR message:", error?.message);
-
-        setAuthError(error?.code ? `Login failed: ${error.code}` : "Login failed. Check console.");
+        setAuthError("Invalid email or password. Please try again.");
     }
   }
 
