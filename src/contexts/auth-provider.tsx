@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import React, { createContext, useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, signOut, User, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
 import type { UserProfile } from "@/types";
 
 interface AuthContextType {
@@ -24,10 +24,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
         if (user) {
             setUser(user);
             const userRef = doc(db, "users", user.uid);
+
+            const docSnap = await getDoc(userRef);
+            if (!docSnap.exists()) {
+                // This is a first-time login for this user.
+                // Let's create their profile document.
+                const newProfile: UserProfile = {
+                    uid: user.uid,
+                    email: user.email || 'manager@kanteen.com',
+                    name: user.displayName || 'Canteen Manager',
+                    role: 'manager'
+                };
+                try {
+                    await setDoc(userRef, newProfile);
+                } catch (e) {
+                    console.error("Error creating user profile document:", e);
+                }
+            }
+
             const unsubscribeFirestore = onSnapshot(userRef, (docSnap) => {
                 if (docSnap.exists()) {
                     setUserProfile(docSnap.data() as UserProfile);
@@ -35,7 +53,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     setUserProfile(null);
                 }
                 setLoading(false);
-            }, () => {
+            }, (error) => {
+                console.error("Firestore snapshot error:", error);
                 setUserProfile(null);
                 setLoading(false);
             });
