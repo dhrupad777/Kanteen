@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
 import { Order, OrderStatus } from '@/types';
 import { db } from '@/lib/firebase';
-import { collection, doc, addDoc, updateDoc, onSnapshot, query, where, serverTimestamp, Timestamp, deleteDoc, limit, orderBy, runTransaction, Transaction } from "firebase/firestore";
+import { collection, doc, addDoc, updateDoc, onSnapshot, query, where, serverTimestamp, Timestamp, deleteDoc, limit, orderBy, runTransaction, getDoc, setDoc } from "firebase/firestore";
 import { toast } from "@/hooks/use-toast";
 
 interface OrderContextType {
@@ -60,33 +60,26 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
 
   const addOrder = useCallback(async (couponId: string) => {
     const normalized = couponId.trim().replace(/^0+/, '') || '0';
-    // Deterministic ID ensures uniqueness at the database level
     const docId = `coupon-${normalized}`;
     const orderRef = doc(db, 'orders', docId);
 
     try {
-      await runTransaction(db, async (transaction: Transaction) => {
-        const snap = await transaction.get(orderRef);
-
+        const snap = await getDoc(orderRef);
         if (snap.exists()) {
-          throw new Error('DUPLICATE_COUPON');
+             throw new Error(`Coupon #${normalized} is already in the queue.`);
         }
 
-        transaction.set(orderRef, {
-          studentId: `student-${normalized}`,
-          items: [{ name: 'Coupon Meal', quantity: 1 }],
-          status: 'Ready',
-          createdAt: serverTimestamp(),
+        await setDoc(orderRef, {
+            studentId: `student-${normalized}`,
+            items: [{ name: 'Coupon Meal', quantity: 1 }],
+            status: 'Ready',
+            createdAt: serverTimestamp(),
         });
-      });
     } catch (error: any) {
-      if (error?.message === 'DUPLICATE_COUPON') {
-        throw new Error(`Coupon #${normalized} is already in the queue.`);
-      }
       console.error("Error adding document: ", error);
       throw error;
     }
-  }, [db]);
+  }, []);
 
   const deleteOrder = useCallback(async (orderId: string) => {
     const orderRef = doc(db, "orders", orderId);
