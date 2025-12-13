@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from 'react-hook-form';
@@ -60,8 +59,11 @@ export default function LoginPage() {
       await signInWithEmail(values.email, values.password);
       router.push('/staff');
     } catch (error: any) {
-        setAuthError("Invalid email or password. Please try again.");
-        console.error("Authentication Error:", error);
+        console.error("AUTH ERROR (raw):", error);
+        console.error("AUTH ERROR code:", error?.code);
+        console.error("AUTH ERROR message:", error?.message);
+
+        setAuthError(error?.code ? `Login failed: ${error.code}` : "Login failed. Check console.");
     }
   }
 
