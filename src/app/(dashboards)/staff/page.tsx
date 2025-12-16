@@ -1,5 +1,8 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
+
 import { useEffect, useState } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { Order } from '@/types';
