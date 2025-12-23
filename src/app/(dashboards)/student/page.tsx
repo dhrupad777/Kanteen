@@ -44,15 +44,7 @@ export default function StudentDashboardPage() {
           </h1>
           <p className="text-muted-foreground mt-1 font-medium">Canteen Order Number Status</p>
         </div>
-        {user?.photoURL && (
-          <div className="hidden md:block">
-            <img
-              src={user.photoURL}
-              alt="Profile"
-              className="h-12 w-12 rounded-full border-2 border-primary/20"
-            />
-          </div>
-        )}
+
       </div>
 
       <MenuDisplay />
