@@ -1,15 +1,17 @@
-
 "use client"
 import Link from "next/link"
 import { ChefHat, UserCog } from "lucide-react"
 import { usePathname } from 'next/navigation'
 import { Button } from "./ui/button"
+import { useAuth } from "@/hooks/use-auth"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export function KanteenHeader() {
   const pathname = usePathname();
+  const { user } = useAuth();
 
-  // Only show login button on main page
-  const showLoginButton = pathname === '/';
+  // Only show login button on main page if NOT logged in
+  const showLoginButton = pathname === '/' && !user;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-card/80 backdrop-blur-sm">
@@ -22,13 +24,24 @@ export function KanteenHeader() {
         </Link>
 
         <div className="flex items-center justify-end gap-4">
-          {showLoginButton && (
-            <Link href="/login">
-              <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full bg-muted hover:bg-muted/80">
-                <UserCog className="h-6 w-6 text-muted-foreground" />
-                <span className="sr-only">Manager Login</span>
-              </Button>
-            </Link>
+          {user ? (
+            <div className="flex items-center gap-3">
+              <Avatar className="h-9 w-9 border border-primary/20">
+                <AvatarImage src={user.photoURL || undefined} alt="User" />
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {user.displayName?.substring(0, 2).toUpperCase() || "U"}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          ) : (
+            showLoginButton && (
+              <Link href="/login">
+                <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full bg-muted hover:bg-muted/80">
+                  <UserCog className="h-6 w-6 text-muted-foreground" />
+                  <span className="sr-only">Manager Login</span>
+                </Button>
+              </Link>
+            )
           )}
         </div>
       </div>

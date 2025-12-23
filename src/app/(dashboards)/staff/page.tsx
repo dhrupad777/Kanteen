@@ -7,15 +7,34 @@ import { useEffect, useState } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { Order } from '@/types';
 import { CouponEntryForm } from '@/components/coupon-entry-form';
+import { checkManagerAllowlist } from '@/lib/auth';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ShieldX } from 'lucide-react';
 import { CouponGrid } from '@/components/coupon-grid';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { MenuManager } from '@/components/menu-manager';
 
 export default function StaffDashboardPage() {
+  console.log("Rendering Staff Dashboard");
   const { orders, loading: ordersLoading } = useOrders();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    async function verifyManager() {
+      if (user && user.email) {
+        const allowed = await checkManagerAllowlist(user.email);
+        setIsAuthorized(allowed);
+      } else if (!authLoading) {
+        setIsAuthorized(false);
+      }
+    }
+    verifyManager();
+  }, [user, authLoading]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -23,12 +42,40 @@ export default function StaffDashboardPage() {
     }
   }, [user, authLoading, router]);
 
-  const isLoading = authLoading || ordersLoading;
+  const isLoading = authLoading || ordersLoading || isAuthorized === null;
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-10rem)]">
         <Loader2 className="h-16 w-16 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Check if user is a manager using allowlist
+  if (isAuthorized === false) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-10rem)]">
+        <Card className="max-w-md">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-destructive">
+              <ShieldX className="h-6 w-6" />
+              <CardTitle>Access Denied</CardTitle>
+            </div>
+            <CardDescription>
+              You don't have permission to access the Manager Dashboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Only authorized managers can access this page. If you believe this is an error,
+              please contact your administrator.
+            </p>
+            <Link href="/">
+              <Button className="w-full">Return to Home</Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -44,6 +91,7 @@ export default function StaffDashboardPage() {
         </div>
       </div>
       <div className="space-y-8 pt-4">
+        <MenuManager />
         <CouponEntryForm />
         <CouponGrid orders={orders} />
       </div>

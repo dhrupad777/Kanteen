@@ -1,6 +1,17 @@
-
 {
   "firestore": {
     "rules": "firestore.rules"
+  },
+  "hosting": {
+    "target": "kanteen",
+    "source": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "frameworksBackend": {
+      "region": "us-central1"
+    }
   }
 }

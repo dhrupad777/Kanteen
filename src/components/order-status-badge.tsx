@@ -28,6 +28,11 @@ const statusConfig = {
     icon: <CheckCircle2 className="h-4 w-4" />,
     className: 'bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-900/30 dark:text-gray-400 dark:border-gray-700',
   },
+  Archived: {
+    label: 'Archived',
+    icon: <CheckCircle2 className="h-4 w-4" />,
+    className: 'bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-900/30 dark:text-gray-500 dark:border-gray-700',
+  },
 };
 
 export function OrderStatusBadge({ status }: OrderStatusBadgeProps) {
