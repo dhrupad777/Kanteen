@@ -20,7 +20,24 @@ export interface UserProfile {
 
 export interface DailyMenu {
   date: string;
-  prepared: {
+  breakfast: string[];
+  main: {
+    sabji: string;
+    dal: string;
+    bread: string;
+    rice: string;
+  };
+  snacks: string[];
+  special: string;
+  visibility: {
+    breakfast: boolean;
+    main: boolean;
+    snacks: boolean;
+    special: boolean;
+    note: boolean;
+  };
+  // Keep prepared optional for backward compatibility
+  prepared?: {
     sabji: string;
     bread: string;
     dal: string;

@@ -29,8 +29,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
         setUser(user);
-        // Default to fetching from 'students' collection
-        const userRef = doc(db, "students", user.uid);
+        // Default to fetching from 'users' collection
+        const userRef = doc(db, "users", user.uid);
 
         const unsubscribeFirestore = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {

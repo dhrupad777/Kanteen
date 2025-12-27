@@ -30,7 +30,7 @@ service cloud.firestore {
     }
 
     match /canteen_state/{docId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow write: if isManager();
     }
 

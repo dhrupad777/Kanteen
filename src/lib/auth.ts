@@ -21,13 +21,13 @@ export async function checkManagerAllowlist(email: string): Promise<boolean> {
 }
 
 export async function checkStudentProfileExists(uid: string): Promise<boolean> {
-    const docRef = doc(db, "students", uid);
+    const docRef = doc(db, "users", uid);
     const docSnap = await getDoc(docRef);
     return docSnap.exists();
 }
 
 export async function createStudentProfile(uid: string, data: { name: string; email: string; photoURL?: string }) {
-    await setDoc(doc(db, "students", uid), {
+    await setDoc(doc(db, "users", uid), {
         uid,
         ...data,
         createdAt: serverTimestamp(),
@@ -36,7 +36,7 @@ export async function createStudentProfile(uid: string, data: { name: string; em
 }
 
 export async function updateStudentLastLogin(uid: string) {
-    await setDoc(doc(db, "students", uid), {
+    await setDoc(doc(db, "users", uid), {
         lastLoginAt: serverTimestamp()
     }, { merge: true });
 }

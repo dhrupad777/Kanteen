@@ -5,11 +5,13 @@ import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CupSoda, Loader2 } from 'lucide-react';
+import { CupSoda, Loader2, ShoppingBag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { MenuDisplay } from '@/components/menu-display';
 
 export default function StudentDashboardPage() {
@@ -17,11 +19,8 @@ export default function StudentDashboardPage() {
   const { user, userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace('/');
-    }
-  }, [authLoading, user, router]);
+  // Auth check removed - dashboard is public
+
 
   const loading = ordersLoading || authLoading;
 
@@ -40,12 +39,21 @@ export default function StudentDashboardPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-6">
         <div>
           <h1 className="font-headline text-3xl font-bold text-primary">
-            Hello, {userProfile?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'Student'}
+            {user ? `Hello, ${userProfile?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'Student'}` : 'Hello'}
           </h1>
           <p className="text-muted-foreground mt-1 font-medium">Canteen Order Number Status</p>
         </div>
 
+
       </div>
+
+
+      <Button asChild className="w-full bg-[#FF4500] hover:bg-[#CC3700] text-white shadow-sm h-12 text-lg font-medium">
+        <Link href="/order" className="flex items-center justify-center gap-2">
+          <ShoppingBag className="h-5 w-5" />
+          Order Online
+        </Link>
+      </Button>
 
       <MenuDisplay />
 

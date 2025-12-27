@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Utensils, Save, Loader2 } from "lucide-react";
+import { Utensils, Save, Loader2, ChefHat, ToggleLeft, ToggleRight, Trash2, Plus, Coffee, Info, Sparkles, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export function MenuManager() {
@@ -16,71 +16,157 @@ export function MenuManager() {
     const { menu, options, updateMenu, loading: menuLoading } = useMenu();
 
     const [saving, setSaving] = useState(false);
-    // Local state for the form, initialized from context
-    const [formData, setFormData] = useState<Partial<DailyMenu>>({
-        prepared: {
-            sabji: "", bread: "", dal: "", rice: "", snacks01: "", snacks02: "", specials: ""
+
+    const [formData, setFormData] = useState<DailyMenu>({
+        date: new Date().toISOString().split('T')[0],
+        breakfast: [],
+        main: { sabji: "", bread: "", dal: "", rice: "" },
+        snacks: [],
+        special: "",
+        visibility: {
+            breakfast: true,
+            main: true,
+            snacks: true,
+            special: true,
+            note: true
         },
         note: ""
     });
 
-    // Sync formData with menu from context when it loads
+    // Sync formData with menu from context
     useEffect(() => {
         if (menu) {
+            // Backward compatibility
+            const snacks = Array.isArray(menu.snacks) ? menu.snacks : [
+                menu.prepared?.snacks01,
+                menu.prepared?.snacks02,
+                // @ts-ignore - map old structure if present
+                menu.snacks?.snack1,
+                // @ts-ignore
+                menu.snacks?.snack2,
+                // @ts-ignore
+                menu.snacks?.snack3
+            ].filter(Boolean) as string[];
+
+            const breakfast = Array.isArray(menu.breakfast) ? menu.breakfast : [];
+
+            const visibility = menu.visibility || {
+                breakfast: true,
+                main: true,
+                snacks: true,
+                special: true,
+                note: true
+            };
+
+            const main = menu.main ?? {
+                sabji: menu.prepared?.sabji ?? "",
+                dal: menu.prepared?.dal ?? "",
+                bread: menu.prepared?.bread ?? "",
+                rice: menu.prepared?.rice ?? "",
+            };
+
+            const special = menu.special ?? menu.prepared?.specials ?? "";
+
             setFormData({
-                prepared: { ...menu.prepared },
+                date: menu.date || new Date().toISOString().split('T')[0],
+                breakfast,
+                main,
+                snacks,
+                special,
+                visibility,
                 note: menu.note || ""
             });
         }
     }, [menu]);
 
-    const handlePreparedChange = (field: keyof DailyMenu['prepared'], value: string) => {
-        setFormData(prev => ({
-            ...prev,
-            prepared: {
-                ...prev.prepared!,
-                [field]: value
-            }
-        }));
+    const handleMainChange = (field: keyof DailyMenu['main'], value: string) => {
+        setFormData(prev => ({ ...prev, main: { ...prev.main, [field]: value } }));
+    };
+
+    const handleSpecialChange = (value: string) => {
+        setFormData(prev => ({ ...prev, special: value }));
     };
 
     const handleNoteChange = (value: string) => {
         setFormData(prev => ({ ...prev, note: value }));
     };
 
-    const handleSave = async () => {
-        if (!formData.prepared) return;
+    const toggleVisibility = (section: keyof DailyMenu['visibility']) => {
+        setFormData(prev => ({
+            ...prev,
+            visibility: { ...prev.visibility, [section]: !prev.visibility[section] }
+        }));
+    };
 
+    // --- Dynamic Array Logic ---
+
+    const updateBreakfast = (index: number, val: string) => {
+        const copy = [...formData.breakfast];
+        copy[index] = val;
+        setFormData(prev => ({ ...prev, breakfast: copy }));
+    };
+    const addBreakfast = () => setFormData(prev => ({ ...prev, breakfast: [...prev.breakfast, ""] }));
+    const removeBreakfast = (index: number) => {
+        setFormData(prev => ({ ...prev, breakfast: prev.breakfast.filter((_, i) => i !== index) }));
+    };
+
+    const updateSnack = (index: number, val: string) => {
+        const copy = [...formData.snacks];
+        copy[index] = val;
+        setFormData(prev => ({ ...prev, snacks: copy }));
+    };
+    const addSnack = () => setFormData(prev => ({ ...prev, snacks: [...prev.snacks, ""] }));
+    const removeSnack = (index: number) => {
+        setFormData(prev => ({ ...prev, snacks: prev.snacks.filter((_, i) => i !== index) }));
+    };
+
+    const handleSave = async () => {
         setSaving(true);
         try {
-            await updateMenu({
-                prepared: formData.prepared,
-                note: formData.note || ""
-            } as DailyMenu); // Cast if needed, or ensure type match
+            // Clean up empty strings
+            const payload: DailyMenu = {
+                ...formData,
+                breakfast: formData.breakfast.filter(s => s && s.trim().length > 0),
+                snacks: formData.snacks.filter(s => s && s.trim().length > 0)
+            };
 
-            toast({
-                title: "Menu Updated",
-                description: "Today's menu is now live for students.",
-            });
+            await updateMenu(payload);
+
+            toast({ title: "Menu Updated", description: "Live for students." });
         } catch (err) {
             console.error("Error saving menu", err);
-            toast({
-                title: "Error",
-                description: "Failed to update menu. Check your permissions.",
-                variant: "destructive"
-            });
+            toast({ title: "Error", description: "Failed update.", variant: "destructive" });
         } finally {
             setSaving(false);
         }
     };
 
     if (menuLoading) {
-        return (
-            <div className="flex justify-center p-8">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-        );
+        return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
+
+    // Helper for Section Header with Visibility Toggle
+    const SectionHeader = ({ icon: Icon, label, sectionKey }: { icon: any, label: string, sectionKey: keyof DailyMenu['visibility'] }) => (
+        <div className="flex items-center justify-between mb-2">
+            <div className="font-semibold flex items-center gap-2 text-foreground/80">
+                <Icon className="h-4 w-4" /> {label}
+            </div>
+            <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => toggleVisibility(sectionKey)}
+                className={`h-6 px-2 text-xs ${formData.visibility[sectionKey] ? 'text-muted-foreground' : 'text-orange-600 bg-orange-50 hover:bg-orange-100'}`}
+                title={formData.visibility[sectionKey] ? "Hide from students" : "Show to students"}
+            >
+                {formData.visibility[sectionKey] ? <Eye className="h-3.5 w-3.5 mr-1" /> : <EyeOff className="h-3.5 w-3.5 mr-1" />}
+                {formData.visibility[sectionKey] ? "Visible" : "Hidden"}
+            </Button>
+        </div>
+    );
+
+    // Get snack options (combined or specific)
+    const snackOptions = [...(options.snacks01 || []), ...(options.snacks02 || [])].filter((v, i, a) => a.indexOf(v) === i).sort();
+    const breakfastOptions = options.breakfast || [];
 
     return (
         <Card>
@@ -91,114 +177,120 @@ export function MenuManager() {
                 </div>
                 <CardDescription>Update the canteen menu for today.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Sabji */}
+            <CardContent className="space-y-6">
+
+                {/* Breakfast */}
+                <div className={`rounded-lg border p-4 transition-colors ${formData.visibility.breakfast ? 'bg-muted/20' : 'bg-orange-50/50 border-orange-100'}`}>
+                    <SectionHeader icon={Coffee} label="Breakfast" sectionKey="breakfast" />
                     <div className="space-y-2">
-                        <Label>Sabji</Label>
-                        <Select
-                            value={formData.prepared?.sabji}
-                            onValueChange={(v) => handlePreparedChange("sabji", v)}
-                        >
-                            <SelectTrigger><SelectValue placeholder="Select Sabji" /></SelectTrigger>
-                            <SelectContent>
-                                {options.sabji?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        {formData.breakfast.map((item, idx) => (
+                            <div key={idx} className="flex gap-2">
+                                <Input
+                                    value={item}
+                                    onChange={(e) => updateBreakfast(idx, e.target.value)}
+                                    placeholder="Enter breakfast item (e.g. Poha)"
+                                    className="flex-1"
+                                />
+                                <Button variant="ghost" size="icon" onClick={() => removeBreakfast(idx)}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                            </div>
+                        ))}
+                        <Button variant="outline" size="sm" onClick={addBreakfast} className="w-full border-dashed text-muted-foreground">
+                            <Plus className="h-3.5 w-3.5 mr-1" /> Add Breakfast Item
+                        </Button>
                     </div>
+                </div>
 
-                    {/* Bread */}
+                {/* Main Course Section */}
+                <div className={`rounded-lg border p-4 transition-colors ${formData.visibility.main ? 'bg-muted/20' : 'bg-orange-50/50 border-orange-100'}`}>
+                    <SectionHeader icon={ChefHat} label="Main Course" sectionKey="main" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Sabji</Label>
+                            <Select value={formData.main.sabji} onValueChange={(v) => handleMainChange("sabji", v)}>
+                                <SelectTrigger><SelectValue placeholder="Select Sabji" /></SelectTrigger>
+                                <SelectContent>
+                                    {options.sabji?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Dal</Label>
+                            <Select value={formData.main.dal} onValueChange={(v) => handleMainChange("dal", v)}>
+                                <SelectTrigger><SelectValue placeholder="Select Dal" /></SelectTrigger>
+                                <SelectContent>
+                                    {options.dal?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Bread</Label>
+                            <Select value={formData.main.bread} onValueChange={(v) => handleMainChange("bread", v)}>
+                                <SelectTrigger><SelectValue placeholder="Select Bread" /></SelectTrigger>
+                                <SelectContent>
+                                    {options.bread?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Rice</Label>
+                            <Select value={formData.main.rice} onValueChange={(v) => handleMainChange("rice", v)}>
+                                <SelectTrigger><SelectValue placeholder="Select Rice" /></SelectTrigger>
+                                <SelectContent>
+                                    {options.rice?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Snacks Section */}
+                <div className={`rounded-lg border p-4 transition-colors ${formData.visibility.snacks ? 'bg-muted/20' : 'bg-orange-50/50 border-orange-100'}`}>
+                    <SectionHeader icon={Utensils} label="Snacks" sectionKey="snacks" />
                     <div className="space-y-2">
-                        <Label>Bread</Label>
-                        <Select
-                            value={formData.prepared?.bread}
-                            onValueChange={(v) => handlePreparedChange("bread", v)}
-                        >
-                            <SelectTrigger><SelectValue placeholder="Select Bread" /></SelectTrigger>
-                            <SelectContent>
-                                {options.bread?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        {formData.snacks.map((item, idx) => (
+                            <div key={idx} className="flex gap-2">
+                                <Select value={item} onValueChange={(v) => updateSnack(idx, v)}>
+                                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select Snack" /></SelectTrigger>
+                                    <SelectContent>
+                                        {snackOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <Button variant="ghost" size="icon" onClick={() => removeSnack(idx)}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                            </div>
+                        ))}
+                        <Button variant="outline" size="sm" onClick={addSnack} className="w-full border-dashed text-muted-foreground">
+                            <Plus className="h-3.5 w-3.5 mr-1" /> Add Snack Item
+                        </Button>
                     </div>
+                </div>
 
-                    {/* Dal */}
-                    <div className="space-y-2">
-                        <Label>Dal</Label>
-                        <Select
-                            value={formData.prepared?.dal}
-                            onValueChange={(v) => handlePreparedChange("dal", v)}
-                        >
-                            <SelectTrigger><SelectValue placeholder="Select Dal" /></SelectTrigger>
-                            <SelectContent>
-                                {options.dal?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                {/* Special & Notes */}
+                <div className={`rounded-lg border p-4 transition-colors ${formData.visibility.special || formData.visibility.note ? 'bg-muted/20' : 'bg-orange-50/50 border-orange-100'}`}>
+                    <div className="space-y-6">
+                        {/* Special */}
+                        <div>
+                            <SectionHeader icon={Sparkles} label="Special" sectionKey="special" />
+                            <Select value={formData.special} onValueChange={handleSpecialChange}>
+                                <SelectTrigger><SelectValue placeholder="Select Special" /></SelectTrigger>
+                                <SelectContent>
+                                    {options.specials?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                    {/* Rice */}
-                    <div className="space-y-2">
-                        <Label>Rice</Label>
-                        <Select
-                            value={formData.prepared?.rice}
-                            onValueChange={(v) => handlePreparedChange("rice", v)}
-                        >
-                            <SelectTrigger><SelectValue placeholder="Select Rice" /></SelectTrigger>
-                            <SelectContent>
-                                {options.rice?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Snack 1 */}
-                    <div className="space-y-2">
-                        <Label>Snack 1</Label>
-                        <Select
-                            value={formData.prepared?.snacks01}
-                            onValueChange={(v) => handlePreparedChange("snacks01", v)}
-                        >
-                            <SelectTrigger><SelectValue placeholder="Select Snack 1" /></SelectTrigger>
-                            <SelectContent>
-                                {options.snacks01?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Snack 2 */}
-                    <div className="space-y-2">
-                        <Label>Snack 2</Label>
-                        <Select
-                            value={formData.prepared?.snacks02}
-                            onValueChange={(v) => handlePreparedChange("snacks02", v)}
-                        >
-                            <SelectTrigger><SelectValue placeholder="Select Snack 2" /></SelectTrigger>
-                            <SelectContent>
-                                {options.snacks02?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Special */}
-                    <div className="space-y-2 md:col-span-2">
-                        <Label>Special</Label>
-                        <Select
-                            value={formData.prepared?.specials}
-                            onValueChange={(v) => handlePreparedChange("specials", v)}
-                        >
-                            <SelectTrigger><SelectValue placeholder="Select Special" /></SelectTrigger>
-                            <SelectContent>
-                                {options.specials?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Note */}
-                    <div className="space-y-2 md:col-span-2">
-                        <Label>Additional Note</Label>
-                        <Input
-                            value={formData.note}
-                            onChange={(e) => handleNoteChange(e.target.value)}
-                            placeholder="e.g. No Paratha today"
-                        />
+                        {/* Note */}
+                        <div>
+                            <SectionHeader icon={Info} label="Additional Note" sectionKey="note" />
+                            <Input
+                                value={formData.note}
+                                onChange={(e) => handleNoteChange(e.target.value)}
+                                placeholder="e.g. No Paratha today"
+                            />
+                        </div>
                     </div>
                 </div>
 
