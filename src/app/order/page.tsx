@@ -5,37 +5,92 @@ import { useAuth } from "@/hooks/use-auth";
 import { signInWithGoogle, createStudentProfile, checkStudentProfileExists } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Chrome, ShoppingBag } from "lucide-react";
+import { Loader2, Search, ArrowLeft, Utensils, Coffee, Soup, Sandwich, Disc, CircleDot, ChefHat, UtensilsCrossed, Carrot, Spline } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-export default function OrderPage() {
+// Order-specific imports
+import { CartProvider, useCart } from "@/contexts/cart-provider";
+import { useMenuItems } from "@/hooks/use-menu-items";
+import { CategoryDialog } from "@/components/order/category-dialog";
+import { MenuItemCard, MenuItemCardSkeleton } from "@/components/order/menu-item-card";
+import { CartPanel } from "@/components/order/cart-panel";
+import { CartBottomBar } from "@/components/order/cart-bottom-bar";
+import { MENU_CATEGORIES, MenuCategory, MenuItem } from "@/types/menu-item";
+import { useToast } from "@/hooks/use-toast";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+// Icon Mapping
+const CATEGORY_ICONS: Record<MenuCategory, any> = {
+    'tea_beverage': Coffee,
+    'maggie': Soup,
+    'sandwich': Sandwich,
+    'dosa': CircleDot,
+    'uttapam': Disc,
+    'rava_dosa': Spline,
+    'paratha': ChefHat,
+    'chinese': UtensilsCrossed,
+    'sabji': Carrot,
+    'indian_rice': Utensils
+};
+
+// Image Mapping (Overrides icons if present)
+const CATEGORY_IMAGES: Partial<Record<MenuCategory, string>> = {
+    'tea_beverage': '/icons/tea_beverage.png',
+    'chinese': '/icons/chinese.png',
+    'dosa': '/icons/dosa.png',
+    'indian_rice': '/icons/indian_rice.png',
+    'maggie': '/icons/maggie.png',
+    'paratha': '/icons/paratha.png',
+    'rava_dosa': '/icons/rava_dosa.png',
+    'sabji': '/icons/sabji.png',
+    'sandwich': '/icons/sandwich.png',
+    'uttapam': '/icons/uttapam.png',
+};
+
+function OrderContent() {
     const { user, userProfile, loading } = useAuth();
     const router = useRouter();
+    const { toast } = useToast();
     const [name, setName] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [isTestMode, setIsTestMode] = useState(false);
 
-    // If user is already authenticated and has a profile, show the "Coming Soon" page (or redirect/show order UI)
-    // For this task, we show the placeholder.
-
-    // We need to handle the state where user is logged in but has no profile -> Show Name Form.
-    // If user is not logged in -> Show Sign In.
-
+    // Profile checking
     const [checkingProfile, setCheckingProfile] = useState(true);
     const [profileExists, setProfileExists] = useState(false);
 
+    // Test User
+    const TEST_USER = {
+        uid: "test-user-123",
+        email: "guest@kanteen.com",
+        displayName: "Guest User",
+        photoURL: null
+    };
+
+    const effectiveUser = isTestMode ? TEST_USER : user;
+    const effectiveProfile = isTestMode ? { name: "Guest User", email: "guest@kanteen.com", photoURL: null } : userProfile;
+
+    // Menu items
+    const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({});
+
+    // Cart
+    const { totalItems } = useCart();
+
     useEffect(() => {
         async function check() {
+            if (isTestMode) {
+                setProfileExists(true);
+                setCheckingProfile(false);
+                return;
+            }
+
             if (user) {
                 if (userProfile) {
                     setProfileExists(true);
                     setCheckingProfile(false);
                 } else {
-                    // Double check with firestore directly in case context is slow or mismatched? 
-                    // Actually context should be enough, but context uses snapshot. 
-                    // If userProfile is null but user exists, it might be loading or doesn't exist.
-                    // Let's rely on useAuth loading state first.
                     const exists = await checkStudentProfileExists(user.uid);
                     setProfileExists(exists);
                     setCheckingProfile(false);
@@ -44,16 +99,22 @@ export default function OrderPage() {
                 setCheckingProfile(false);
             }
         }
-        if (!loading) {
+        if (!loading || isTestMode) {
             check();
         }
-    }, [user, userProfile, loading]);
+    }, [user, userProfile, loading, isTestMode]);
 
+    function handleTestMode() {
+        setIsTestMode(true);
+        toast({
+            title: "Test Mode Active",
+            description: "You are browsing as a guest user.",
+        });
+    }
 
     async function handleGoogleSignIn() {
         try {
             await signInWithGoogle();
-            // Auth state change will trigger re-render and useEffect
         } catch (error) {
             console.error("Sign in failed", error);
         }
@@ -61,19 +122,16 @@ export default function OrderPage() {
 
     async function handleNameSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!user || !name.trim()) return;
+        if (!effectiveUser || !name.trim()) return;
 
         setSubmitting(true);
         try {
-            await createStudentProfile(user.uid, {
+            await createStudentProfile(effectiveUser.uid, {
                 name: name.trim(),
-                email: user.email || "",
-                photoURL: user.photoURL || ""
+                email: effectiveUser.email || "",
+                photoURL: effectiveUser.photoURL || ""
             });
-            // After creating profile, setProfileExists(true)
             setProfileExists(true);
-            // Optional: Refresh page or router push to self to ensure state update? 
-            // Context should update automatically via snapshot.
         } catch (error) {
             console.error("Error creating profile:", error);
         } finally {
@@ -81,87 +139,269 @@ export default function OrderPage() {
         }
     }
 
+    function handleCheckout() {
+        if (totalItems === 0) {
+            toast({
+                title: "Cart is empty",
+                description: "Add some items before proceeding to checkout.",
+                variant: "destructive",
+            });
+            return;
+        }
+        toast({
+            title: "Payment coming soon!",
+            description: "Razorpay integration will be added in the next phase.",
+        });
+    }
+
+    // Filter items by search query
+    const filteredItems = menuItems.filter((item) =>
+        item.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    // Group items for category view
+    const groupedItems = MENU_CATEGORIES.reduce((acc, cat) => {
+        acc[cat.value] = menuItems.filter(item => item.category === cat.value && item.isActive);
+        return acc;
+    }, {} as Record<MenuCategory, MenuItem[]>);
+
+    // Loading state
     if (loading || checkingProfile) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-background">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex items-center justify-center min-h-screen bg-gray-50">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="text-sm text-gray-500">Loading...</p>
+                </div>
             </div>
         );
     }
 
-    // State 1: Not Signed In
-    if (!user) {
+    // State 1: Not Signed In - Orange Theme
+    if (!effectiveUser) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-background p-4">
-                <Card className="w-full max-w-md text-center">
-                    <CardHeader>
-                        <div className="flex justify-center mb-4">
-                            <ShoppingBag className="h-12 w-12 text-primary" />
-                        </div>
-                        <CardTitle className="text-2xl">Sign in to Order</CardTitle>
-                        <CardDescription>
-                            Please sign in with your Google account to place an order.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
+            <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
+                <div className="w-full max-w-sm text-center">
+                    {/* Icon */}
+                    <div className="w-20 h-20 mx-auto mb-8 rounded-[22px] bg-primary flex items-center justify-center shadow-lg shadow-orange-200">
+                        <Utensils className="h-10 w-10 text-white" />
+                    </div>
+
+                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-2">
+                        Order Online
+                    </h1>
+                    <p className="text-gray-500 mb-8">
+                        Sign in to browse the menu and place your order
+                    </p>
+
+                    <div className="space-y-3">
                         <Button
-                            className="w-full h-12 text-lg"
+                            className={cn(
+                                "w-full h-14 text-base font-semibold rounded-2xl",
+                                "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md",
+                                "transition-all duration-200"
+                            )}
                             onClick={handleGoogleSignIn}
                         >
-                            <Chrome className="mr-2 h-5 w-5" />
+                            <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                            </svg>
                             Continue with Google
                         </Button>
-                    </CardContent>
-                </Card>
+
+                        <Button
+                            variant="ghost"
+                            className="w-full text-gray-500 hover:text-gray-900"
+                            onClick={handleTestMode}
+                        >
+                            Continue in Test Mode
+                        </Button>
+                    </div>
+                </div>
             </div>
         );
     }
 
-    // State 2: Signed In, Missing Name
-    if (!profileExists && !userProfile) {
+    // State 2: Signed In, Missing Name - Orange Theme
+    if (!profileExists && !effectiveProfile) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-background p-4">
-                <Card className="w-full max-w-md">
-                    <CardHeader>
-                        <CardTitle>Almost there!</CardTitle>
-                        <CardDescription>Please enter your name to complete your profile.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form onSubmit={handleNameSubmit} className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="name">Full Name</Label>
-                                <Input
-                                    id="name"
-                                    placeholder="e.g. Adarsh Gupta"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    required
-                                    minLength={2}
-                                />
-                            </div>
-                            <Button type="submit" className="w-full" disabled={submitting}>
-                                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Complete Setup
-                            </Button>
-                        </form>
-                    </CardContent>
-                </Card>
+            <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
+                <div className="w-full max-w-sm">
+                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-2 text-center">
+                        Welcome! 👋
+                    </h1>
+                    <p className="text-gray-500 mb-8 text-center">
+                        What should we call you?
+                    </p>
+
+                    <form onSubmit={handleNameSubmit} className="space-y-4">
+                        <div>
+                            <Input
+                                id="name"
+                                placeholder="Enter your name"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                required
+                                minLength={2}
+                                className={cn(
+                                    "h-14 text-base px-4 rounded-2xl border-gray-200",
+                                    "focus:ring-2 focus:ring-primary focus:border-transparent"
+                                )}
+                            />
+                        </div>
+                        <Button
+                            type="submit"
+                            className={cn(
+                                "w-full h-14 text-base font-semibold rounded-2xl",
+                                "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+                            )}
+                            disabled={submitting}
+                        >
+                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Continue
+                        </Button>
+                    </form>
+                </div>
             </div>
         );
     }
 
-    // State 3: Fully Authenticated & Profiled -> Show Order Page (Placeholder)
+    // State 3: Fully Authenticated -> Order Page
     return (
-        <main className="mx-auto max-w-3xl p-6">
-            <h1 className="text-2xl font-semibold tracking-tight">Order Online</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-                Coming soon. We’ll build this page next.
-            </p>
+        <div className="min-h-screen bg-gray-50 pb-32 md:pb-6">
+            {/* Header */}
+            <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-100">
+                <div className="max-w-6xl mx-auto px-4 py-4">
+                    <div className="flex items-center justify-between gap-4">
+                        <Link
+                            href="/student"
+                            className="flex items-center gap-2 text-gray-500 hover:text-primary transition-colors"
+                        >
+                            <ArrowLeft className="h-5 w-5" />
+                            <span className="text-sm font-medium hidden sm:inline">Back</span>
+                        </Link>
 
-            <div className="mt-8 p-4 bg-muted rounded-md border">
-                <p className="font-medium">Logged in as: {userProfile?.name || user.displayName}</p>
-                <p className="text-xs text-muted-foreground">{user.email}</p>
+                        <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+                            Kanteen
+                        </h1>
+
+                        <div className="flex items-center gap-2">
+                            {effectiveProfile?.photoURL && (
+                                <img
+                                    src={effectiveProfile.photoURL}
+                                    alt=""
+                                    className="h-8 w-8 rounded-full border border-gray-200"
+                                />
+                            )}
+                            <span className="text-sm text-gray-600 font-medium hidden sm:inline">
+                                {effectiveProfile?.name?.split(' ')[0] || effectiveUser?.displayName?.split(' ')[0]}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div className="max-w-6xl mx-auto px-4 py-6">
+                <div className="flex gap-8">
+                    {/* Main content */}
+                    <div className="flex-1 min-w-0">
+                        {/* Search */}
+                        <div className="relative mb-8">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                            <Input
+                                placeholder="Search for items..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className={cn(
+                                    "h-12 pl-12 pr-4 text-base rounded-2xl",
+                                    "bg-white border-gray-200 shadow-sm",
+                                    "focus:ring-2 focus:ring-primary focus:border-transparent",
+                                    "placeholder:text-gray-400"
+                                )}
+                            />
+                        </div>
+
+                        {/* Error state */}
+                        {menuError && (
+                            <div className="p-6 bg-red-50 rounded-2xl text-center mb-6">
+                                <p className="text-red-600 font-medium">Failed to load menu</p>
+                                <p className="text-red-500 text-sm mt-1">{menuError}</p>
+                            </div>
+                        )}
+
+                        {/* Loading State */}
+                        {menuLoading && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {[1, 2, 3, 4, 5, 6].map((i) => (
+                                    <div key={i} className="h-32 bg-gray-200 rounded-3xl animate-pulse" />
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Content */}
+                        {!menuLoading && !menuError && (
+                            <>
+                                {searchQuery ? (
+                                    /* Search Results View */
+                                    <div className="space-y-4">
+                                        <h2 className="text-lg font-semibold text-gray-900">
+                                            Search Results ({filteredItems.length})
+                                        </h2>
+                                        {filteredItems.length === 0 ? (
+                                            <div className="text-center py-12 bg-white rounded-3xl border border-gray-100">
+                                                <p className="text-gray-500">No items found matching "{searchQuery}"</p>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                                                {filteredItems.map((item) => (
+                                                    <MenuItemCard key={item.id} item={item} />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    /* Category Grid View */
+                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+                                        {MENU_CATEGORIES.map((cat) => {
+                                            const items = groupedItems[cat.value] || [];
+                                            if (items.length === 0) return null;
+
+                                            return (
+                                                <CategoryDialog
+                                                    key={cat.value}
+                                                    category={cat.value}
+                                                    label={cat.label}
+                                                    items={items}
+                                                    icon={CATEGORY_ICONS[cat.value]}
+                                                    image={CATEGORY_IMAGES[cat.value]}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+
+                    {/* Cart Panel (Desktop) */}
+                    <div className="hidden md:block w-80 shrink-0">
+                        <div className="sticky top-24">
+                            <CartPanel onCheckout={handleCheckout} />
+                        </div>
+                    </div>
+                </div>
             </div>
-        </main>
+
+            {/* Cart Bottom Bar (Mobile) */}
+            <CartBottomBar className="hide-when-dialog-open" />
+        </div>
     );
+}
+
+// Main export (using global CartProvider from layout)
+export default function OrderPage() {
+    return <OrderContent />;
 }

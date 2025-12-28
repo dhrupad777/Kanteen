@@ -22,7 +22,7 @@ export function MenuManager() {
         breakfast: [],
         main: { sabji: "", bread: "", dal: "", rice: "" },
         snacks: [],
-        special: "",
+        special: [], // Now array
         visibility: {
             breakfast: true,
             main: true,
@@ -65,7 +65,10 @@ export function MenuManager() {
                 rice: menu.prepared?.rice ?? "",
             };
 
-            const special = menu.special ?? menu.prepared?.specials ?? "";
+            // Handle special as array
+            const special = Array.isArray(menu.special) ? menu.special :
+                (typeof menu.special === 'string' && menu.special ? [menu.special] :
+                    (menu.prepared?.specials ? [menu.prepared?.specials] : []));
 
             setFormData({
                 date: menu.date || new Date().toISOString().split('T')[0],
@@ -81,10 +84,6 @@ export function MenuManager() {
 
     const handleMainChange = (field: keyof DailyMenu['main'], value: string) => {
         setFormData(prev => ({ ...prev, main: { ...prev.main, [field]: value } }));
-    };
-
-    const handleSpecialChange = (value: string) => {
-        setFormData(prev => ({ ...prev, special: value }));
     };
 
     const handleNoteChange = (value: string) => {
@@ -120,6 +119,17 @@ export function MenuManager() {
         setFormData(prev => ({ ...prev, snacks: prev.snacks.filter((_, i) => i !== index) }));
     };
 
+    // New Special Handlers
+    const updateSpecial = (index: number, val: string) => {
+        const copy = [...formData.special];
+        copy[index] = val;
+        setFormData(prev => ({ ...prev, special: copy }));
+    };
+    const addSpecial = () => setFormData(prev => ({ ...prev, special: [...prev.special, ""] }));
+    const removeSpecial = (index: number) => {
+        setFormData(prev => ({ ...prev, special: prev.special.filter((_, i) => i !== index) }));
+    };
+
     const handleSave = async () => {
         setSaving(true);
         try {
@@ -127,7 +137,8 @@ export function MenuManager() {
             const payload: DailyMenu = {
                 ...formData,
                 breakfast: formData.breakfast.filter(s => s && s.trim().length > 0),
-                snacks: formData.snacks.filter(s => s && s.trim().length > 0)
+                snacks: formData.snacks.filter(s => s && s.trim().length > 0),
+                special: formData.special.filter(s => s && s.trim().length > 0)
             };
 
             await updateMenu(payload);
@@ -167,6 +178,7 @@ export function MenuManager() {
     // Get snack options (combined or specific)
     const snackOptions = [...(options.snacks01 || []), ...(options.snacks02 || [])].filter((v, i, a) => a.indexOf(v) === i).sort();
     const breakfastOptions = options.breakfast || [];
+    const specialOptions = options.specials || [];
 
     return (
         <Card>
@@ -273,13 +285,25 @@ export function MenuManager() {
                     <div className="space-y-6">
                         {/* Special */}
                         <div>
-                            <SectionHeader icon={Sparkles} label="Special" sectionKey="special" />
-                            <Select value={formData.special} onValueChange={handleSpecialChange}>
-                                <SelectTrigger><SelectValue placeholder="Select Special" /></SelectTrigger>
-                                <SelectContent>
-                                    {options.specials?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                            <SectionHeader icon={Sparkles} label="Special Items" sectionKey="special" />
+                            <div className="space-y-2">
+                                {formData.special.map((item, idx) => (
+                                    <div key={idx} className="flex gap-2">
+                                        <Select value={item} onValueChange={(v) => updateSpecial(idx, v)}>
+                                            <SelectTrigger className="flex-1"><SelectValue placeholder="Select Special Item" /></SelectTrigger>
+                                            <SelectContent>
+                                                {specialOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                        <Button variant="ghost" size="icon" onClick={() => removeSpecial(idx)}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </div>
+                                ))}
+                                <Button variant="outline" size="sm" onClick={addSpecial} className="w-full border-dashed text-muted-foreground">
+                                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Special Item
+                                </Button>
+                            </div>
                         </div>
 
                         {/* Note */}

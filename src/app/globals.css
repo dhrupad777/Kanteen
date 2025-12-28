@@ -32,6 +32,7 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
   }
+
   .dark {
     --background: 224 71.4% 4.1%;
     --foreground: 210 20% 98%;
@@ -64,6 +65,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -71,15 +73,26 @@
 }
 
 @layer utilities {
-    @keyframes pulse-border {
-        0%, 100% {
-            box-shadow: 0 0 0 0 hsl(var(--primary) / 0.7);
-        }
-        50% {
-            box-shadow: 0 0 0 4px hsl(var(--primary) / 0);
-        }
+  @keyframes pulse-border {
+
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 hsl(var(--primary) / 0.7);
     }
-    .animate-pulse-border {
-        animation: pulse-border 2s infinite;
+
+    50% {
+      box-shadow: 0 0 0 4px hsl(var(--primary) / 0);
     }
+  }
+
+  .animate-pulse-border {
+    animation: pulse-border 2s infinite;
+  }
+
+  /* Hide main navigation/capsules when dialog is open to prevent overlap/duplication */
+  body:has([data-state="open"][role="dialog"]) .hide-when-dialog-open {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
 }

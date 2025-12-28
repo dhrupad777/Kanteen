@@ -34,6 +34,12 @@ service cloud.firestore {
       allow write: if isManager();
     }
 
+    // Orderable menu catalog - public read for students browsing
+    match /menu_items/{itemId} {
+      allow read: if true;
+      allow write: if isManager();
+    }
+
     match /managers/{userId} {
       allow create, update, read: if request.auth != null && request.auth.uid == userId;
       allow delete, list: if false;

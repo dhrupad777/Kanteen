@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster"
 import './globals.css';
 import Script from 'next/script';
 import { AuthProvider } from "@/contexts/auth-provider";
+import { CartProvider } from "@/contexts/cart-provider";
 
 const inter = Inter({
   subsets: ['latin'],
@@ -52,8 +53,10 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${poppins.variable} font-body antialiased`}>
         <AuthProvider>
-          {children}
-          <Toaster />
+          <CartProvider>
+            {children}
+            <Toaster />
+          </CartProvider>
         </AuthProvider>
       </body>
     </html>

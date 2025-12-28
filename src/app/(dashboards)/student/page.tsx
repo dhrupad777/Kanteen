@@ -35,7 +35,7 @@ export default function StudentDashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-6">
         <div>
           <h1 className="font-headline text-3xl font-bold text-primary">
@@ -48,14 +48,14 @@ export default function StudentDashboardPage() {
       </div>
 
 
+      <MenuDisplay />
+
       <Button asChild className="w-full bg-[#FF4500] hover:bg-[#CC3700] text-white shadow-sm h-12 text-lg font-medium">
         <Link href="/order" className="flex items-center justify-center gap-2">
           <ShoppingBag className="h-5 w-5" />
           Order Online
         </Link>
       </Button>
-
-      <MenuDisplay />
 
       {orders.length === 0 && !loading && (
         <Card className="text-center">

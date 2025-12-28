@@ -28,7 +28,7 @@ export interface DailyMenu {
     rice: string;
   };
   snacks: string[];
-  special: string;
+  special: string[];
   visibility: {
     breakfast: boolean;
     main: boolean;

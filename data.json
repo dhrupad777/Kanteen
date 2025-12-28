@@ -1,0 +1,1953 @@
+{
+    "collection": "menu_items",
+    "documents": [
+        {
+            "docId": "redbull-energy-drink",
+            "data": {
+                "name": "RedBull Energy Drink",
+                "price": 125,
+                "priceType": "fixed",
+                "category": "energy_zone",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 1
+            }
+        },
+        {
+            "docId": "redbull-sugarfree",
+            "data": {
+                "name": "RedBull Sugarfree",
+                "price": 125,
+                "priceType": "fixed",
+                "category": "energy_zone",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 2
+            }
+        },
+        {
+            "docId": "redbull-yellow-edition",
+            "data": {
+                "name": "RedBull Yellow Edition",
+                "price": 125,
+                "priceType": "fixed",
+                "category": "energy_zone",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 3
+            }
+        },
+        {
+            "docId": "redbull-red-edition",
+            "data": {
+                "name": "RedBull Red Edition",
+                "price": 125,
+                "priceType": "fixed",
+                "category": "energy_zone",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 4
+            }
+        },
+        {
+            "docId": "tea",
+            "data": {
+                "name": "Tea",
+                "price": 10,
+                "priceType": "fixed",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 10
+            }
+        },
+        {
+            "docId": "special-tea",
+            "data": {
+                "name": "Special Tea",
+                "price": 15,
+                "priceType": "fixed",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 11
+            }
+        },
+        {
+            "docId": "dip-coffee",
+            "data": {
+                "name": "Dip Coffee",
+                "price": 15,
+                "priceType": "fixed",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 12
+            }
+        },
+        {
+            "docId": "coffee",
+            "data": {
+                "name": "Coffee",
+                "price": 15,
+                "priceType": "fixed",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 13
+            }
+        },
+        {
+            "docId": "milk",
+            "data": {
+                "name": "Milk",
+                "price": 15,
+                "priceType": "fixed",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 14
+            }
+        },
+        {
+            "docId": "lassi",
+            "data": {
+                "name": "Lassi",
+                "price": 30,
+                "priceType": "fixed",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 15
+            }
+        },
+        {
+            "docId": "fresh-lemon-juice",
+            "data": {
+                "name": "Fresh Lemon Juice",
+                "price": 15,
+                "priceType": "fixed",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 16
+            }
+        },
+        {
+            "docId": "cold-drinks-mrp",
+            "data": {
+                "name": "Cold Drinks",
+                "price": null,
+                "priceType": "mrp",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 17
+            }
+        },
+        {
+            "docId": "ice-cream-mrp",
+            "data": {
+                "name": "Ice Cream",
+                "price": null,
+                "priceType": "mrp",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 18
+            }
+        },
+        {
+            "docId": "milkshake-mrp",
+            "data": {
+                "name": "Milkshake",
+                "price": null,
+                "priceType": "mrp",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 19
+            }
+        },
+        {
+            "docId": "mineral-water-mrp",
+            "data": {
+                "name": "Mineral Water",
+                "price": null,
+                "priceType": "mrp",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 20
+            }
+        },
+        {
+            "docId": "biscuits-mrp",
+            "data": {
+                "name": "Biscuits",
+                "price": null,
+                "priceType": "mrp",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 21
+            }
+        },
+        {
+            "docId": "cakes-mrp",
+            "data": {
+                "name": "Cake's",
+                "price": null,
+                "priceType": "mrp",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 22
+            }
+        },
+        {
+            "docId": "cadbury-item-mrp",
+            "data": {
+                "name": "Cadbury Item",
+                "price": null,
+                "priceType": "mrp",
+                "category": "tea_beverage",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 23
+            }
+        },
+        {
+            "docId": "maggie",
+            "data": {
+                "name": "Maggie",
+                "price": 40,
+                "priceType": "fixed",
+                "category": "maggie",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 30
+            }
+        },
+        {
+            "docId": "butter-maggie",
+            "data": {
+                "name": "Butter Maggie",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "maggie",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 31
+            }
+        },
+        {
+            "docId": "cheese-maggie",
+            "data": {
+                "name": "Cheese Maggie",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "maggie",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 32
+            }
+        },
+        {
+            "docId": "egg-maggie",
+            "data": {
+                "name": "Egg Maggie",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "maggie",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 33
+            }
+        },
+        {
+            "docId": "veg-maggie",
+            "data": {
+                "name": "Veg Maggie",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "maggie",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 34
+            }
+        },
+        {
+            "docId": "masala-maggie",
+            "data": {
+                "name": "Masala Maggie",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "maggie",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 35
+            }
+        },
+        {
+            "docId": "bread-jam",
+            "data": {
+                "name": "Bread Jam",
+                "price": 30,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 40
+            }
+        },
+        {
+            "docId": "bread-butter",
+            "data": {
+                "name": "Bread Butter",
+                "price": 20,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 41
+            }
+        },
+        {
+            "docId": "veg-sandwich",
+            "data": {
+                "name": "Veg Sandwich",
+                "price": 30,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 42
+            }
+        },
+        {
+            "docId": "veg-toast-sandwich",
+            "data": {
+                "name": "Veg Toast Sandwich",
+                "price": 40,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 43
+            }
+        },
+        {
+            "docId": "veg-cheese-sandwich",
+            "data": {
+                "name": "Veg Cheese Sandwich",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 44
+            }
+        },
+        {
+            "docId": "cheese-sandwich",
+            "data": {
+                "name": "Cheese Sandwich",
+                "price": 40,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 45
+            }
+        },
+        {
+            "docId": "toast-butter",
+            "data": {
+                "name": "Toast Butter",
+                "price": 20,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 46
+            }
+        },
+        {
+            "docId": "toast-jam",
+            "data": {
+                "name": "Toast Jam",
+                "price": 20,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 47
+            }
+        },
+        {
+            "docId": "veg-cheese-grilled-sandwich",
+            "data": {
+                "name": "Veg Cheese Grilled Sandwich",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 48
+            }
+        },
+        {
+            "docId": "cheese-grilled-sandwich",
+            "data": {
+                "name": "Cheese Grilled Sandwich",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 49
+            }
+        },
+        {
+            "docId": "paneer-sandwich",
+            "data": {
+                "name": "Paneer Sandwich",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 50
+            }
+        },
+        {
+            "docId": "paneer-grilled-sandwich",
+            "data": {
+                "name": "Paneer Grilled Sandwich",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 51
+            }
+        },
+        {
+            "docId": "paneer-cheese-sandwich",
+            "data": {
+                "name": "Paneer Cheese Sandwich",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 52
+            }
+        },
+        {
+            "docId": "paneer-cheese-grilled-sandwich",
+            "data": {
+                "name": "Paneer Cheese Grilled Sandwich",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 53
+            }
+        },
+        {
+            "docId": "double-egg-omelet-sandwich",
+            "data": {
+                "name": "Double Egg Omelet Sandwich",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 54
+            }
+        },
+        {
+            "docId": "chinese-grilled-sandwich",
+            "data": {
+                "name": "Chinese Grilled",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "sandwich",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 55
+            }
+        },
+        {
+            "docId": "plain-dosa",
+            "data": {
+                "name": "Plain Dosa",
+                "price": 40,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 60
+            }
+        },
+        {
+            "docId": "cheese-plain-dosa",
+            "data": {
+                "name": "Cheese Plain Dosa",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 61
+            }
+        },
+        {
+            "docId": "butter-plain-dosa",
+            "data": {
+                "name": "Butter Plain Dosa",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 62
+            }
+        },
+        {
+            "docId": "sez-plain-dosa",
+            "data": {
+                "name": "Sez Plain Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 63
+            }
+        },
+        {
+            "docId": "cheese-sez-plain-dosa",
+            "data": {
+                "name": "Cheese Sez Plain Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 64
+            }
+        },
+        {
+            "docId": "masala-dosa",
+            "data": {
+                "name": "Masala Dosa",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 65
+            }
+        },
+        {
+            "docId": "butter-masala-dosa",
+            "data": {
+                "name": "Butter Masala Dosa",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 66
+            }
+        },
+        {
+            "docId": "sez-masala-dosa",
+            "data": {
+                "name": "Sez Masala Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 67
+            }
+        },
+        {
+            "docId": "cheese-masala-dosa",
+            "data": {
+                "name": "Cheese Masala Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 68
+            }
+        },
+        {
+            "docId": "cheese-sez-masala-dosa",
+            "data": {
+                "name": "Cheese Sez Masala Dosa",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 69
+            }
+        },
+        {
+            "docId": "mysore-plain-dosa",
+            "data": {
+                "name": "Mysore Plain Dosa",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 70
+            }
+        },
+        {
+            "docId": "mysore-masala-dosa",
+            "data": {
+                "name": "Mysore Masala Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 71
+            }
+        },
+        {
+            "docId": "plain-uttapam",
+            "data": {
+                "name": "Plain Uttapam",
+                "price": 40,
+                "priceType": "fixed",
+                "category": "uttapam",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 80
+            }
+        },
+        {
+            "docId": "onion-uttapam",
+            "data": {
+                "name": "Onion Uttapam",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "uttapam",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 81
+            }
+        },
+        {
+            "docId": "tomato-uttapam",
+            "data": {
+                "name": "Tomato Uttapam",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "uttapam",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 82
+            }
+        },
+        {
+            "docId": "masala-uttapam",
+            "data": {
+                "name": "Masala Uttapam",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "uttapam",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 83
+            }
+        },
+        {
+            "docId": "tomato-onion-uttapam",
+            "data": {
+                "name": "Tomato Onion Uttapam",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "uttapam",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 84
+            }
+        },
+        {
+            "docId": "mysore-uttapam",
+            "data": {
+                "name": "Mysore Uttapam",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "uttapam",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 85
+            }
+        },
+        {
+            "docId": "rava-plain-dosa",
+            "data": {
+                "name": "Rava Plain Dosa",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 90
+            }
+        },
+        {
+            "docId": "rava-masala-dosa",
+            "data": {
+                "name": "Rava Masala Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 91
+            }
+        },
+        {
+            "docId": "rava-cheese-masala-dosa",
+            "data": {
+                "name": "Rava Cheese Masala Dosa",
+                "price": 75,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 92
+            }
+        },
+        {
+            "docId": "rava-butter-masala-dosa",
+            "data": {
+                "name": "Rava Butter Masala Dosa",
+                "price": 75,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 93
+            }
+        },
+        {
+            "docId": "rava-butter-plain-dosa",
+            "data": {
+                "name": "Rava Butter Plain Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 94
+            }
+        },
+        {
+            "docId": "rava-cheese-plain-dosa",
+            "data": {
+                "name": "Rava Cheese Plain Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 95
+            }
+        },
+        {
+            "docId": "rava-mysore-plain-dosa",
+            "data": {
+                "name": "Rava Mysore Plain Dosa",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 96
+            }
+        },
+        {
+            "docId": "rava-mysore-masala-dosa",
+            "data": {
+                "name": "Rava Mysore Masala Dosa",
+                "price": 75,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 97
+            }
+        },
+        {
+            "docId": "set-dosa",
+            "data": {
+                "name": "Set Dosa",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "rava_dosa",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 98
+            }
+        },
+        {
+            "docId": "plain-paratha",
+            "data": {
+                "name": "Plain Paratha",
+                "price": 25,
+                "priceType": "fixed",
+                "category": "paratha",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 110
+            }
+        },
+        {
+            "docId": "aloo-paratha",
+            "data": {
+                "name": "Aloo Paratha",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "paratha",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 111
+            }
+        },
+        {
+            "docId": "onion-paratha",
+            "data": {
+                "name": "Onion Paratha",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "paratha",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 112
+            }
+        },
+        {
+            "docId": "egg-paratha",
+            "data": {
+                "name": "Egg Paratha",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "paratha",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 113
+            }
+        },
+        {
+            "docId": "paneer-paratha",
+            "data": {
+                "name": "Paneer Paratha",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "paratha",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 114
+            }
+        },
+        {
+            "docId": "veg-fried-rice",
+            "data": {
+                "name": "Veg Fried Rice",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 200
+            }
+        },
+        {
+            "docId": "veg-sez-fried-rice",
+            "data": {
+                "name": "Veg Sez Fried Rice",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 201
+            }
+        },
+        {
+            "docId": "egg-fried-rice",
+            "data": {
+                "name": "Egg Fried Rice",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 202
+            }
+        },
+        {
+            "docId": "egg-sez-fried-rice",
+            "data": {
+                "name": "Egg Sez Fried Rice",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 203
+            }
+        },
+        {
+            "docId": "paneer-fried-rice",
+            "data": {
+                "name": "Paneer Fried Rice",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 204
+            }
+        },
+        {
+            "docId": "paneer-sez-fried-rice",
+            "data": {
+                "name": "Paneer Sez Fried Rice",
+                "price": 75,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 205
+            }
+        },
+        {
+            "docId": "mushroom-fried-rice",
+            "data": {
+                "name": "Mushroom Fried Rice",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 206
+            }
+        },
+        {
+            "docId": "veg-hakka-noodles",
+            "data": {
+                "name": "Veg Hakka Noodles",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 207
+            }
+        },
+        {
+            "docId": "veg-sez-noodles",
+            "data": {
+                "name": "Veg Sez Noodles",
+                "price": 80,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 208
+            }
+        },
+        {
+            "docId": "egg-noodle",
+            "data": {
+                "name": "Egg Noodle",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 209
+            }
+        },
+        {
+            "docId": "egg-sez-noodle",
+            "data": {
+                "name": "Egg Sez Noodle",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 210
+            }
+        },
+        {
+            "docId": "chilly-garlic-noodle",
+            "data": {
+                "name": "Chilly Garlic Noodle",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 211
+            }
+        },
+        {
+            "docId": "garlic-fried-rice",
+            "data": {
+                "name": "Garlic Fried Rice",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 212
+            }
+        },
+        {
+            "docId": "garlic-sez-fried-rice",
+            "data": {
+                "name": "Garlic Sez Fried Rice",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 213
+            }
+        },
+        {
+            "docId": "paneer-chilly",
+            "data": {
+                "name": "Paneer Chilly",
+                "price": 75,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 214
+            }
+        },
+        {
+            "docId": "veg-manchurian",
+            "data": {
+                "name": "Veg Manchurian",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 215
+            }
+        },
+        {
+            "docId": "soyabean-chilly",
+            "data": {
+                "name": "Soyabean Chilly",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "chinese",
+                "tags": [],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 216
+            }
+        },
+        {
+            "docId": "dal-fry",
+            "data": {
+                "name": "Dal Fry",
+                "price": 40,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 300
+            }
+        },
+        {
+            "docId": "dal-butter-fry",
+            "data": {
+                "name": "Dal Butter Fry",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 301
+            }
+        },
+        {
+            "docId": "dal-tadka",
+            "data": {
+                "name": "Dal Tadka",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 302
+            }
+        },
+        {
+            "docId": "dal-palak",
+            "data": {
+                "name": "Dal Palak",
+                "price": 45,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 303
+            }
+        },
+        {
+            "docId": "chana-masala-sabji",
+            "data": {
+                "name": "Chana Masala",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 304
+            }
+        },
+        {
+            "docId": "aloo-mutter",
+            "data": {
+                "name": "Aloo Mutter",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 305
+            }
+        },
+        {
+            "docId": "aloo-shimla",
+            "data": {
+                "name": "Aloo Shimla",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 306
+            }
+        },
+        {
+            "docId": "aloo-jeera",
+            "data": {
+                "name": "Aloo Jeera",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 307
+            }
+        },
+        {
+            "docId": "aloo-palak",
+            "data": {
+                "name": "Aloo Palak",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 308
+            }
+        },
+        {
+            "docId": "aloo-gobi",
+            "data": {
+                "name": "Aloo Gobi",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 309
+            }
+        },
+        {
+            "docId": "bhindi-masala",
+            "data": {
+                "name": "Bhindi Masala",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 310
+            }
+        },
+        {
+            "docId": "mutter-paneer",
+            "data": {
+                "name": "Mutter Paneer",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 311
+            }
+        },
+        {
+            "docId": "paneer-masala",
+            "data": {
+                "name": "Paneer Masala",
+                "price": 75,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 312
+            }
+        },
+        {
+            "docId": "paneer-butter-masala",
+            "data": {
+                "name": "Paneer Butter Masala",
+                "price": 90,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 313
+            }
+        },
+        {
+            "docId": "palak-paneer",
+            "data": {
+                "name": "Palak Paneer",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 314
+            }
+        },
+        {
+            "docId": "green-peas-masala",
+            "data": {
+                "name": "Green Peas Masala",
+                "price": 55,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 315
+            }
+        },
+        {
+            "docId": "sev-bhaji",
+            "data": {
+                "name": "Sev Bhaji",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 316
+            }
+        },
+        {
+            "docId": "mushroom-masala",
+            "data": {
+                "name": "Mushroom Masala",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 317
+            }
+        },
+        {
+            "docId": "egg-masala",
+            "data": {
+                "name": "Egg Masala",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 318
+            }
+        },
+        {
+            "docId": "egg-butter-masala",
+            "data": {
+                "name": "Egg Butter Masala",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 319
+            }
+        },
+        {
+            "docId": "paneer-bhurji",
+            "data": {
+                "name": "Paneer Bhurji",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 320
+            }
+        },
+        {
+            "docId": "paneer-tikka-masala",
+            "data": {
+                "name": "Paneer Tikka Masala",
+                "price": 90,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 321
+            }
+        },
+        {
+            "docId": "paneer-chana",
+            "data": {
+                "name": "Paneer Chana",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 322
+            }
+        },
+        {
+            "docId": "paneer-kolhapuri",
+            "data": {
+                "name": "Paneer Kolhapuri",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 323
+            }
+        },
+        {
+            "docId": "paneer-mushroom",
+            "data": {
+                "name": "Paneer Mushroom",
+                "price": 75,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 324
+            }
+        },
+        {
+            "docId": "lasooni-paneer",
+            "data": {
+                "name": "Lasooni Paneer",
+                "price": 85,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 325
+            }
+        },
+        {
+            "docId": "veg-kolhapuri",
+            "data": {
+                "name": "Veg Kolhapuri",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 326
+            }
+        },
+        {
+            "docId": "mix-veg-curry",
+            "data": {
+                "name": "Mix Veg Curry",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "sabji",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 327
+            }
+        },
+        {
+            "docId": "jeera-rice",
+            "data": {
+                "name": "Jeera Rice",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 400
+            }
+        },
+        {
+            "docId": "lemon-rice",
+            "data": {
+                "name": "Lemon Rice",
+                "price": 60,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 401
+            }
+        },
+        {
+            "docId": "curd-rice",
+            "data": {
+                "name": "Curd Rice",
+                "price": 65,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 402
+            }
+        },
+        {
+            "docId": "curd-rice-tadka",
+            "data": {
+                "name": "Curd Rice (Tadka)",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 403
+            }
+        },
+        {
+            "docId": "dal-khichdi",
+            "data": {
+                "name": "Dal Khichdi",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 404
+            }
+        },
+        {
+            "docId": "dal-khichdi-tadka",
+            "data": {
+                "name": "Dal Khichdi (Tadka)",
+                "price": 80,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 405
+            }
+        },
+        {
+            "docId": "egg-burji-rice",
+            "data": {
+                "name": "Egg Burji Rice",
+                "price": 80,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 406
+            }
+        },
+        {
+            "docId": "veg-pulao",
+            "data": {
+                "name": "Veg Pulao",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 407
+            }
+        },
+        {
+            "docId": "green-peas-pulao",
+            "data": {
+                "name": "Green Peas Pulao",
+                "price": 70,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 408
+            }
+        },
+        {
+            "docId": "veg-biryani",
+            "data": {
+                "name": "Veg Biryani",
+                "price": 80,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 409
+            }
+        },
+        {
+            "docId": "egg-biryani",
+            "data": {
+                "name": "Egg Biryani",
+                "price": 80,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 410
+            }
+        },
+        {
+            "docId": "paneer-biryani-indian",
+            "data": {
+                "name": "Paneer Biryani",
+                "price": 80,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 411
+            }
+        },
+        {
+            "docId": "half-rice",
+            "data": {
+                "name": "Half Rice",
+                "price": 25,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 412
+            }
+        },
+        {
+            "docId": "full-rice",
+            "data": {
+                "name": "Full Rice",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "veg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 413
+            }
+        },
+        {
+            "docId": "egg-omelet-bread",
+            "data": {
+                "name": "Egg Omelet Bread",
+                "price": 40,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 414
+            }
+        },
+        {
+            "docId": "egg-bhurji-bread",
+            "data": {
+                "name": "Egg Bhurji Bread",
+                "price": 50,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 415
+            }
+        },
+        {
+            "docId": "boiled-egg",
+            "data": {
+                "name": "Boiled Egg",
+                "price": 10,
+                "priceType": "fixed",
+                "category": "indian_rice",
+                "tags": [
+                    "egg"
+                ],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 416
+            }
+        }
+    ]
+}
