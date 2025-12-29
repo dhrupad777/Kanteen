@@ -24,7 +24,8 @@ export default function StudentDashboardPage() {
 
   const loading = ordersLoading || authLoading;
 
-  const readyOrders = orders.filter(o => o.status === 'Ready');
+  const myActiveOrders = orders.filter(o => o.studentId === user?.uid && o.status !== 'PICKED_UP' && o.status !== 'Completed');
+  const publicReadyOrders = orders.filter(o => o.status === 'Ready' && (!o.token || o.token < 201) && o.studentId !== user?.uid);
 
   if (loading) {
     return (
@@ -35,18 +36,25 @@ export default function StudentDashboardPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-6">
         <div>
           <h1 className="font-headline text-3xl font-bold text-primary">
             {user ? `Hello, ${userProfile?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'Student'}` : 'Hello'}
           </h1>
-          <p className="text-muted-foreground mt-1 font-medium">Canteen Order Number Status</p>
+          <p className="text-muted-foreground mt-1 font-medium">MRC Canteen Dashboard</p>
         </div>
-
-
       </div>
 
+      {myActiveOrders.length > 0 && (
+        <DashboardSection
+          title="My Orders"
+          icon={<ShoppingBag className="w-6 h-6 text-primary" />}
+          orders={myActiveOrders}
+          emptyMessage=""
+          className="bg-orange-50 border-orange-100"
+        />
+      )}
 
       <MenuDisplay />
 
@@ -56,6 +64,16 @@ export default function StudentDashboardPage() {
           Order Online
         </Link>
       </Button>
+
+      {publicReadyOrders.length > 0 && (
+        <DashboardSection
+          title="Ready to Collect"
+          icon={<CupSoda className="w-6 h-6 text-green-800" />}
+          orders={publicReadyOrders}
+          emptyMessage=""
+          className="bg-green-50 border-green-100"
+        />
+      )}
 
       {orders.length === 0 && !loading && (
         <Card className="text-center">
@@ -68,17 +86,6 @@ export default function StudentDashboardPage() {
           </CardContent>
         </Card>
       )}
-
-      {readyOrders.length > 0 && (
-        <DashboardSection
-          title="Ready to Collect"
-          icon={<CupSoda className="w-6 h-6 text-green-800" />}
-          orders={readyOrders}
-          emptyMessage="No orders are ready for pickup yet."
-          className="bg-green-100/60 dark:bg-green-900/30 border-green-300/20 dark:border-green-700/50"
-        />
-      )}
-
     </div>
   );
 }
@@ -101,9 +108,16 @@ function DashboardSection({
   return (
     <Card className={cn("border shadow-sm", className)}>
       <CardHeader>
-        <CardTitle className="font-headline text-xl md:text-2xl font-bold flex items-center gap-3 text-foreground/80">
-          {icon}
-          <span>{title} ({orders.length})</span>
+        <CardTitle className="font-headline text-xl md:text-2xl font-bold flex items-center justify-between gap-3 text-foreground/80">
+          <div className="flex items-center gap-3">
+            {icon}
+            <span>{title} ({orders.length})</span>
+          </div>
+          {title === "My Orders" && (
+            <span className="text-[10px] font-medium text-muted-foreground italic normal-case flex items-center gap-1">
+              Tap for summary
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>

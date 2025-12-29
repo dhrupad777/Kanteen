@@ -14,11 +14,11 @@ import { useToast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
   couponId: z.coerce
-    .number({invalid_type_error: "Please enter a valid number."})
+    .number({ invalid_type_error: "Please enter a valid number." })
     .int()
     .positive("Coupon number must be a positive number.")
     .min(1, 'Coupon number must be at least 1.')
-    .max(300, 'Coupon number must be no more than 300.'),
+    .max(200, 'Coupon number must be no more than 200.'),
 });
 
 export function CouponEntryForm() {
@@ -34,14 +34,14 @@ export function CouponEntryForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-        await addOrder(values.couponId.toString());
-        form.reset({couponId: undefined});
+      await addOrder(values.couponId.toString());
+      form.reset({ couponId: undefined });
     } catch (error: any) {
-        toast({
-            variant: "destructive",
-            title: "Duplicate Order",
-            description: error.message,
-        })
+      toast({
+        variant: "destructive",
+        title: "Duplicate Order",
+        description: error.message,
+      })
     }
   }
 
@@ -49,10 +49,10 @@ export function CouponEntryForm() {
     <Card className="bg-secondary/40 border-0">
       <CardHeader>
         <CardTitle className="font-headline text-xl md:text-2xl flex items-center gap-2">
-            <Ticket className="text-primary"/>
-            Create New Order
+          <Ticket className="text-primary" />
+          Create New Order
         </CardTitle>
-        <CardDescription>Enter a coupon number (1-300) to add an order to the 'Ready' queue.</CardDescription>
+        <CardDescription>Enter a coupon number (1-200) to add an order to the 'Ready' queue.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -64,15 +64,15 @@ export function CouponEntryForm() {
                 <FormItem className="flex-grow w-full">
                   <FormLabel>Coupon Number</FormLabel>
                   <FormControl>
-                    <Input 
-                      type="number" 
+                    <Input
+                      type="number"
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      min="1" 
-                      max="300" 
-                      placeholder="e.g. 42" 
-                      {...field} 
-                      value={field.value ?? ''} 
+                      min="1"
+                      max="200"
+                      placeholder="e.g. 42"
+                      {...field}
+                      value={field.value ?? ''}
                       className="bg-background"
                     />
                   </FormControl>

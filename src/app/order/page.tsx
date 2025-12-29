@@ -76,7 +76,7 @@ function OrderContent() {
     const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({});
 
     // Cart
-    const { totalItems } = useCart();
+    const { totalItems, checkout } = useCart();
 
     useEffect(() => {
         async function check() {
@@ -139,7 +139,7 @@ function OrderContent() {
         }
     }
 
-    function handleCheckout() {
+    async function handleCheckout() {
         if (totalItems === 0) {
             toast({
                 title: "Cart is empty",
@@ -148,10 +148,32 @@ function OrderContent() {
             });
             return;
         }
-        toast({
-            title: "Payment coming soon!",
-            description: "Razorpay integration will be added in the next phase.",
-        });
+
+        if (!effectiveUser?.uid) {
+            toast({
+                title: "Authentication required",
+                description: "Please sign in to complete your order.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            const { orderId, token, otp } = await checkout(effectiveUser.uid);
+            // Store OTP in local storage for the student to see later
+            localStorage.setItem(`kanteen_otp_${orderId}`, otp);
+            router.push(`/order/success?token=${token}&orderId=${orderId}`);
+        } catch (error) {
+            console.error("Checkout failed", error);
+            toast({
+                title: "Checkout failed",
+                description: "Something went wrong while processing your order.",
+                variant: "destructive",
+            });
+        } finally {
+            setSubmitting(false);
+        }
     }
 
     // Filter items by search query

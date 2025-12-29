@@ -10,7 +10,19 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if true;
+      allow read: if 
+        (resource.data.status == 'Ready' && resource.data.token < 201) ||
+        (request.auth != null && (resource.data.studentId == request.auth.uid || isManager()));
+      allow create, update, delete: if isManager();
+    }
+
+    match /order_counters/{date} {
+      allow read: if isManager();
+      allow write: if false; // Only via API (Admin SDK)
+    }
+
+    match /metadata/{docId} {
+      allow read: if isManager();
       allow write: if isManager();
     }
 
@@ -48,6 +60,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
       allow delete, list: if false;
+    }
+
+    match /daily_reports/{reportId} {
+      allow read, write: if isManager();
     }
   }
 }

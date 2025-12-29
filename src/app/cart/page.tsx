@@ -1,14 +1,18 @@
 "use client";
 
 import { useCart } from "@/contexts/cart-provider";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { useState } from "react";
 
 export default function CartPage() {
     const router = useRouter();
-    const { items, isHydrated, totalItems, totalPrice, increment, decrement, removeItem, clearCart } = useCart();
+    const { user } = useAuth();
+    const { items, isHydrated, totalItems, totalPrice, increment, decrement, removeItem, clearCart, checkout } = useCart();
+    const [processing, setProcessing] = useState(false);
 
     // Show loading state while checking localStorage
     if (!isHydrated) {
@@ -123,12 +127,26 @@ export default function CartPage() {
                     </div>
                     <Button
                         className="w-full h-14 text-base font-semibold rounded-2xl bg-primary hover:bg-primary/90 text-white transition-all shadow-lg shadow-orange-200"
-                        onClick={() => {
-                            // TODO: Integrate with checkout flow
-                            alert("Checkout coming soon!");
+                        disabled={items.length === 0 || processing}
+                        onClick={async () => {
+                            if (!user?.uid) {
+                                router.push('/order');
+                                return;
+                            }
+                            setProcessing(true);
+                            try {
+                                const { orderId, token, otp } = await checkout(user.uid);
+                                // Store OTP in local storage for the student to see later
+                                localStorage.setItem(`kanteen_otp_${orderId}`, otp);
+                                router.push(`/order/success?token=${token}&orderId=${orderId}`);
+                            } catch (error) {
+                                console.error("Checkout failed:", error);
+                            } finally {
+                                setProcessing(false);
+                            }
                         }}
                     >
-                        Proceed to Pay
+                        {processing ? "Processing..." : "Proceed to Pay"}
                     </Button>
                 </div>
             </div>

@@ -1,12 +1,26 @@
 
-export type OrderStatus = 'Pending' | 'Preparing' | 'Ready' | 'Completed' | 'Archived';
+export type OrderStatus = 'PAID' | 'Preparing' | 'Ready' | 'Completed' | 'Archived' | 'PICKED_UP';
 
 export interface Order {
   id: string;
   studentId: string;
-  items: { name: string; quantity: number }[];
+  items: { name: string; quantity: number; price: number }[];
+  totalPrice: number;
+  token: number;
+  otpHash: string;
+  otp?: {
+    verifiedAt?: any;
+    attempts?: number;
+  };
   status: OrderStatus;
   createdAt: Date;
+  dateKey?: string;
+  kitchen?: {
+    markedPreparingAt?: any;
+    readyAt?: any;
+    pickedUpAt?: any;
+    updatedBy?: string;
+  };
 }
 
 export interface UserProfile {

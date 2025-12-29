@@ -102,15 +102,29 @@ interface CartContextType {
     increment: (itemId: string) => void;
     decrement: (itemId: string) => void;
     clearCart: () => void;
+    checkout: (studentId: string) => Promise<{ orderId: string, token: number; otp: string }>;
     getItemQty: (itemId: string) => number;
 }
 
 const CartContext = createContext<CartContextType | null>(null);
 
+// Helper for hashing
+async function hashOTP(otp: string): Promise<string> {
+    const msgUint8 = new TextEncoder().encode(otp);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // Provider
 export function CartProvider({ children }: { children: ReactNode }) {
     // Lazy initialization - reads from localStorage synchronously on mount
     const [state, dispatch] = useReducer(cartReducer, null, () => {
+        // Prevent access to localStorage during SSR
+        if (typeof window === "undefined") {
+            return { items: [], isHydrated: false };
+        }
+
         try {
             const stored = localStorage.getItem(CART_STORAGE_KEY);
             if (stored) {
@@ -161,6 +175,43 @@ export function CartProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "CLEAR" });
     }, []);
 
+    const checkout = useCallback(async (studentId: string) => {
+        const { auth } = await import("@/lib/firebase");
+
+        const user = auth.currentUser;
+        if (!user) throw new Error("Not authenticated");
+
+        const idToken = await user.getIdToken();
+
+        const response = await fetch('/api/orders/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`
+            },
+            body: JSON.stringify({
+                items: state.items.map(i => ({
+                    name: i.name,
+                    qty: i.qty,
+                    price: i.price
+                })),
+                totalPrice,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Checkout failed');
+        }
+
+        const result = await response.json();
+
+        // Clear cart after success
+        clearCart();
+
+        return result; // contains { orderId, token, otp }
+    }, [state.items, totalPrice, clearCart]);
+
     const getItemQty = useCallback(
         (itemId: string) => {
             const item = state.items.find((i) => i.itemId === itemId);
@@ -181,6 +232,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 increment,
                 decrement,
                 clearCart,
+                checkout,
                 getItemQty,
             }}
         >

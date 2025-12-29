@@ -10,7 +10,7 @@ import { CouponEntryForm } from '@/components/coupon-entry-form';
 import { checkManagerAllowlist } from '@/lib/auth';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { Loader2, ShieldX } from 'lucide-react';
+import { Loader2, ShieldX, Utensils } from 'lucide-react';
 import { CouponGrid } from '@/components/coupon-grid';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -97,6 +97,12 @@ export default function StaffDashboardPage() {
             Manage all active orders via the coupon grid. Add new orders below.
           </p>
         </div>
+        <Link href="/staff/kitchen">
+          <Button className="bg-primary hover:bg-primary/90">
+            <Utensils className="mr-2 h-4 w-4" />
+            Kitchen View
+          </Button>
+        </Link>
       </div>
       <div className="space-y-8 pt-4">
         <MenuManager />

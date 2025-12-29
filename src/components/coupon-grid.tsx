@@ -20,7 +20,7 @@ import { EditCouponForm } from './edit-coupon-form';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
-const MAX_COUPONS = 300;
+const MAX_COUPONS = 200;
 
 interface CouponGridProps {
   orders: Order[];
@@ -66,11 +66,11 @@ export function CouponGrid({ orders }: CouponGridProps) {
   };
 
   const clearLongPressTimer = () => {
-    if(longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
     }
   };
-  
+
   const handleTouchStart = (couponId: number) => handleMouseDown(couponId);
   const handleTouchEnd = () => clearLongPressTimer();
 
@@ -84,7 +84,7 @@ export function CouponGrid({ orders }: CouponGridProps) {
     setIsActionMenuOpen(false);
     setIsDeleteConfirmOpen(true);
   };
-  
+
   const handleEditSubmit = (newCouponId: number) => {
     if (selectedOrder) {
       updateOrderCoupon(selectedOrder.id, newCouponId.toString());
@@ -105,96 +105,96 @@ export function CouponGrid({ orders }: CouponGridProps) {
     <>
       <Card>
         <CardHeader>
-            <CardTitle className="font-headline text-2xl">Coupon Grid</CardTitle>
+          <CardTitle className="font-headline text-2xl">Coupon Grid</CardTitle>
         </CardHeader>
         <CardContent>
-            <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-15 xl:grid-cols-20 gap-2">
+          <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-15 xl:grid-cols-20 gap-2">
             {[...Array(MAX_COUPONS)].map((_, i) => {
-                const couponId = i + 1;
-                const order = activeOrdersMap.get(couponId);
-                const isActive = !!order;
+              const couponId = i + 1;
+              const order = activeOrdersMap.get(couponId);
+              const isActive = !!order;
 
-                return (
+              return (
                 <motion.div
-                    key={couponId}
-                    initial={{ scale: 1 }}
-                    animate={{ scale: isActive ? [1, 1.1, 1] : 1 }}
-                    transition={{ duration: 0.3 }}
+                  key={couponId}
+                  initial={{ scale: 1 }}
+                  animate={{ scale: isActive ? [1, 1.1, 1] : 1 }}
+                  transition={{ duration: 0.3 }}
                 >
-                    <Button
+                  <Button
                     variant={isActive ? 'default' : 'outline'}
                     className={cn(
-                        'w-full h-12 text-lg font-bold transition-all duration-300 ease-in-out transform',
-                        isActive ? 'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90' : 'bg-card text-card-foreground/70 hover:bg-muted',
-                        'hover:scale-105 active:scale-95'
+                      'w-full h-12 text-lg font-bold transition-all duration-300 ease-in-out transform',
+                      isActive ? 'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90' : 'bg-card text-card-foreground/70 hover:bg-muted',
+                      'hover:scale-105 active:scale-95'
                     )}
                     onClick={() => {
-                        clearLongPressTimer();
-                        handleButtonClick(couponId);
+                      clearLongPressTimer();
+                      handleButtonClick(couponId);
                     }}
                     onMouseDown={() => handleMouseDown(couponId)}
                     onMouseUp={clearLongPressTimer}
                     onMouseLeave={clearLongPressTimer}
                     onTouchStart={() => handleTouchStart(couponId)}
                     onTouchEnd={handleTouchEnd}
-                    >
+                  >
                     {couponId}
-                    </Button>
+                  </Button>
                 </motion.div>
-                );
+              );
             })}
-            </div>
+          </div>
         </CardContent>
       </Card>
-      
+
       {/* Long Press Action Menu */}
       <Dialog open={isActionMenuOpen} onOpenChange={setIsActionMenuOpen}>
         <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Actions for Coupon #{selectedOrder?.studentId.split('-')[1]}</DialogTitle>
-                <DialogDescription>
-                    Choose an action for this order. This is for correcting mistakes.
-                </DialogDescription>
-            </DialogHeader>
-            <div className="flex justify-around pt-4">
-                <Button variant="outline" onClick={handleEdit}>Edit Number</Button>
-                <Button variant="destructive" onClick={handleDelete}>Delete Order</Button>
-            </div>
+          <DialogHeader>
+            <DialogTitle>Actions for Coupon #{selectedOrder?.studentId.split('-')[1]}</DialogTitle>
+            <DialogDescription>
+              Choose an action for this order. This is for correcting mistakes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-around pt-4">
+            <Button variant="outline" onClick={handleEdit}>Edit Number</Button>
+            <Button variant="destructive" onClick={handleDelete}>Delete Order</Button>
+          </div>
         </DialogContent>
       </Dialog>
-      
+
       {/* Edit Modal */}
       {selectedOrder && (
         <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Edit Coupon Number</DialogTitle>
-                    <DialogDescription>Enter the new coupon number for this order.</DialogDescription>
-                </DialogHeader>
-                <EditCouponForm
-                    currentCoupon={parseInt(selectedOrder.studentId.split('-')[1] || '0')}
-                    onSubmit={handleEditSubmit}
-                    onCancel={() => setIsEditModalOpen(false)}
-                />
-            </DialogContent>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Coupon Number</DialogTitle>
+              <DialogDescription>Enter the new coupon number for this order.</DialogDescription>
+            </DialogHeader>
+            <EditCouponForm
+              currentCoupon={parseInt(selectedOrder.studentId.split('-')[1] || '0')}
+              onSubmit={handleEditSubmit}
+              onCancel={() => setIsEditModalOpen(false)}
+            />
+          </DialogContent>
         </Dialog>
       )}
 
       {/* Delete Confirmation */}
       {selectedOrder && (
         <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    This will permanently delete the order for coupon #{selectedOrder.studentId.split('-')[1]}. This action cannot be undone.
-                </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteConfirm}>Yes, delete it</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the order for coupon #{selectedOrder.studentId.split('-')[1]}. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteConfirm}>Yes, delete it</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         </AlertDialog>
       )}
     </>
