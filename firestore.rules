@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Registrations Collection
+    match /registrations/{registration} {
+      // Allow anyone to submit a registration form (Create)
+      allow create: if true;
+      
+      // Prevent public users from reading (stealing), updating, or deleting data
+      // Allow authenticated users (admins) to read data
+      allow read: if request.auth != null;
+      
+      
+      // Prevent updates or deletions even by admins (for now, or allow if needed)
+      // UPDATED: Allow admins to delete
+      allow delete: if request.auth != null;
+      allow update: if false;
+    }
+  }
+}
