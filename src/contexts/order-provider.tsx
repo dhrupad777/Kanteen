@@ -34,14 +34,13 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
   // Check for manager role whenever auth state changes
   useEffect(() => {
     async function checkRole() {
-      const isTestMode = typeof window !== 'undefined' && localStorage.getItem('managerTestMode') === 'true';
       if (user?.email) {
         const allowed = await checkManagerAllowlist(user.email);
         setIsVerifiedManager(allowed);
-        setIsManager(allowed || isTestMode);
+        setIsManager(allowed);
       } else {
         setIsVerifiedManager(false);
-        setIsManager(isTestMode);
+        setIsManager(false);
       }
     }
     if (!authLoading) checkRole();
@@ -92,6 +91,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         if (err.code !== 'permission-denied') {
           console.error("Manager listener error:", err);
         }
+        setLoading(false); // Ensure loading is set to false even on error
       }));
     } else {
       // 2. STUDENT/PUBLIC: Ready offline coupons (Tokens 1-200)
@@ -105,6 +105,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         if (err.code !== 'permission-denied') {
           console.error("Public listener error:", err);
         }
+        setLoading(false); // Ensure loading is set to false even on error
       }));
 
       // 3. STUDENT PRIVATE: Own orders
@@ -118,9 +119,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           if (err.code !== 'permission-denied') {
             console.error("Private listener error:", err);
           }
+          setLoading(false); // Ensure loading is set to false even on error
         }));
-      } else {
-        setLoading(false);
       }
     }
 
@@ -142,44 +142,57 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const docId = `manual-${normalized}-${Date.now()}`;
-    const orderRef = doc(db, 'orders', docId);
-
     try {
-      await setDoc(orderRef, {
-        studentId: `student-${normalized}`,
-        items: [{ name: 'Coupon Meal', quantity: 1, price: 0 }],
-        status: 'Ready',
-        token: parseInt(normalized),
-        createdAt: serverTimestamp(),
-        type: 'manual'
+      const token = await user?.getIdToken();
+      if (!token) throw new Error("Authentication required");
+
+      const response = await fetch('/api/staff/orders/manual', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ couponId: normalized })
       });
+
+      if (!response.ok) throw new Error('Failed to create order');
     } catch (error: any) {
       console.error("Error adding document: ", error);
       throw error;
     }
-  }, [orders]);
+  }, [orders, user]);
 
   const deleteOrder = useCallback(async (orderId: string) => {
-    const orderRef = doc(db, "orders", orderId);
     try {
-      await deleteDoc(orderRef);
+      const token = await user?.getIdToken();
+      if (!token) throw new Error("Authentication required");
+
+      await fetch(`/api/staff/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
     } catch (error) {
       console.error("Error deleting document: ", error);
     }
-  }, []);
+  }, [user]);
 
   const updateOrderStatus = useCallback(async (orderId: string, newStatus: OrderStatus) => {
-    const orderRef = doc(db, "orders", orderId);
     try {
-      await updateDoc(orderRef, {
-        status: newStatus
-      });
+      const token = await user?.getIdToken();
+      if (!token) throw new Error("Authentication required");
 
+      await fetch(`/api/staff/orders/${orderId}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
     } catch (error) {
       console.error("Error updating document: ", error);
     }
-  }, []);
+  }, [user]);
 
   const updateOrderCoupon = useCallback(async (orderId: string, newCouponId: string) => {
     const activeOrder = orders.find(o => o.studentId === `student-${newCouponId}` && (o.status === 'Ready'));
@@ -192,15 +205,22 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const orderRef = doc(db, "orders", orderId);
     try {
-      await updateDoc(orderRef, {
-        studentId: `student-${newCouponId}`,
+      const token = await user?.getIdToken();
+      if (!token) throw new Error("Authentication required");
+
+      await fetch(`/api/staff/orders/${orderId}/update-coupon`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ newCouponId })
       });
     } catch (error) {
       console.error("Error updating document: ", error);
     }
-  }, [orders]);
+  }, [orders, user]);
 
 
   const getOrdersByStudent = useCallback((studentId: string) => {

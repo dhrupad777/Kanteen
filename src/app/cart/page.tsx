@@ -3,16 +3,25 @@
 import { useCart } from "@/contexts/cart-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag, Package } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function CartPage() {
     const router = useRouter();
+    const { toast } = useToast();
     const { user } = useAuth();
     const { items, isHydrated, totalItems, totalPrice, increment, decrement, removeItem, clearCart, checkout } = useCart();
     const [processing, setProcessing] = useState(false);
+    const [isParcel, setIsParcel] = useState(false);
+
+    // Calculate final price including parcel charge and platform charges
+    const parcelCharge = 5;
+    const platformCharges = 0; // Platform convenience charges (currently ₹0)
+    const finalTotal = isParcel ? totalPrice + parcelCharge + platformCharges : totalPrice + platformCharges;
 
     // Show loading state while checking localStorage
     if (!isHydrated) {
@@ -80,7 +89,7 @@ export default function CartPage() {
                             className="flex items-center gap-4 p-4 bg-white rounded-2xl shadow-sm border border-gray-100"
                         >
                             <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-900 truncate">{item.name}</p>
+                                <p className="font-semibold text-gray-900 break-words">{item.name}</p>
                                 <p className="text-sm text-gray-500">₹{item.price} each</p>
                             </div>
 
@@ -119,10 +128,57 @@ export default function CartPage() {
             {/* Fixed Bottom Summary */}
             <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-6 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
                 <div className="max-w-2xl mx-auto space-y-4">
-                    <div className="flex items-center justify-between px-2">
-                        <div className="flex flex-col">
-                            <span className="text-sm text-gray-500">Total ({totalItems} items)</span>
-                            <span className="text-2xl font-bold text-gray-900">₹{totalPrice}</span>
+                    {/* Order Summary */}
+                    <div className="space-y-3">
+                        {/* Items list */}
+                        <div className="space-y-2 max-h-32 overflow-y-auto px-2">
+                            {items.map((item, idx) => (
+                                <div key={idx} className="flex justify-between items-start text-sm">
+                                    <span className="text-gray-600 flex-1 pr-2 break-words">
+                                        {item.name} × {item.qty}
+                                    </span>
+                                    <span className="font-medium text-gray-900 whitespace-nowrap">
+                                        ₹{item.price * item.qty}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Parcel Toggle */}
+                        <div className="flex items-center justify-between px-2 py-3 bg-gray-50 rounded-xl border border-gray-200">
+                            <div className="flex items-center gap-3">
+                                <Package className="h-5 w-5 text-gray-600" />
+                                <div className="flex flex-col">
+                                    <span className="font-medium text-gray-900">Parcel Order</span>
+                                    <span className="text-xs text-gray-500">Add packaging (+₹{parcelCharge})</span>
+                                </div>
+                            </div>
+                            <Switch
+                                checked={isParcel}
+                                onCheckedChange={setIsParcel}
+                            />
+                        </div>
+
+                        {/* Price breakdown */}
+                        <div className="space-y-1 px-2 pt-2 border-t border-gray-200">
+                            <div className="flex justify-between text-sm text-gray-600">
+                                <span>Subtotal ({totalItems} items)</span>
+                                <span>₹{totalPrice}</span>
+                            </div>
+                            {isParcel && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                    <span>Parcel Charges</span>
+                                    <span>₹{parcelCharge}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-sm text-gray-600">
+                                <span>Platform Convenience Charges</span>
+                                <span>₹{platformCharges}</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-2">
+                                <span className="text-base font-bold text-gray-900">Total</span>
+                                <span className="text-2xl font-bold text-gray-900">₹{finalTotal}</span>
+                            </div>
                         </div>
                     </div>
                     <Button
@@ -130,17 +186,34 @@ export default function CartPage() {
                         disabled={items.length === 0 || processing}
                         onClick={async () => {
                             if (!user?.uid) {
-                                router.push('/order');
+                                toast({
+                                    title: "Login Required",
+                                    description: "Please login to complete your order.",
+                                    variant: "destructive",
+                                });
+                                router.push('/login?redirect=/cart');
                                 return;
                             }
                             setProcessing(true);
                             try {
-                                const { orderId, token, otp } = await checkout(user.uid);
+                                const { orderId, token, otp } = await checkout(user.uid, finalTotal, isParcel, platformCharges);
                                 // Store OTP in local storage for the student to see later
                                 localStorage.setItem(`kanteen_otp_${orderId}`, otp);
+
+                                toast({
+                                    title: "Order Placed Successfully!",
+                                    description: `Token: ${token}`,
+                                    variant: "default",
+                                });
+
                                 router.push(`/order/success?token=${token}&orderId=${orderId}`);
-                            } catch (error) {
+                            } catch (error: any) {
                                 console.error("Checkout failed:", error);
+                                toast({
+                                    title: "Checkout Failed",
+                                    description: error.message || "Something went wrong. Please try again.",
+                                    variant: "destructive",
+                                });
                             } finally {
                                 setProcessing(false);
                             }

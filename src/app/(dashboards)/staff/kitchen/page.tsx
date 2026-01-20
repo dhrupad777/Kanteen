@@ -30,12 +30,6 @@ export default function KitchenDashboardPage() {
 
     useEffect(() => {
         async function verifyManager() {
-            const isTestMode = typeof window !== 'undefined' && localStorage.getItem('managerTestMode') === 'true';
-            if (isTestMode) {
-                setIsAuthorized(true);
-                return;
-            }
-
             if (user && user.email) {
                 const allowed = await checkManagerAllowlist(user.email);
                 setIsAuthorized(allowed);
@@ -54,7 +48,11 @@ export default function KitchenDashboardPage() {
     );
 
     const filteredOrders = searchToken
-        ? activeOrders.filter(o => o.token.toString().includes(searchToken))
+        ? activeOrders.filter(o =>
+            o.token.toString().includes(searchToken) ||
+            o.userName?.toLowerCase().includes(searchToken.toLowerCase()) ||
+            o.userEmail?.toLowerCase().includes(searchToken.toLowerCase())
+        )
         : activeOrders;
 
     const ordersByStatus = {
@@ -64,26 +62,31 @@ export default function KitchenDashboardPage() {
 
     async function handleStatusUpdate(orderId: string, newStatus: string) {
         try {
-            const idToken = await user?.getIdToken();
+            const token = await user?.getIdToken();
+            if (!token) throw new Error("Authentication required");
+
             const response = await fetch(`/api/staff/orders/${orderId}/status`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
+                    'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ status: newStatus }),
+                body: JSON.stringify({ status: newStatus })
             });
 
-            if (!response.ok) throw new Error('Failed to update status');
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to update status');
+            }
 
             toast({
                 title: "Status Updated",
                 description: `Order is now ${newStatus}`,
             });
-        } catch (error) {
+        } catch (error: any) {
             toast({
                 title: "Error",
-                description: "Failed to update order status",
+                description: error.message || "Failed to update order status",
                 variant: "destructive",
             });
         }
@@ -93,20 +96,21 @@ export default function KitchenDashboardPage() {
         if (!otpValue) return;
 
         try {
-            const idToken = await user?.getIdToken();
+            const token = await user?.getIdToken();
+            if (!token) throw new Error("Authentication required");
+
             const response = await fetch(`/api/staff/orders/${orderId}/verify-otp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
+                    'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ otp: otpValue }),
+                body: JSON.stringify({ otp: otpValue })
             });
 
-            const result = await response.json();
-
             if (!response.ok) {
-                throw new Error(result.error || 'Invalid OTP');
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to verify OTP');
             }
 
             toast({
@@ -118,7 +122,7 @@ export default function KitchenDashboardPage() {
         } catch (error: any) {
             toast({
                 title: "Verification Failed",
-                description: error.message,
+                description: error.message || "Failed to verify OTP",
                 variant: "destructive",
             });
         }
@@ -197,7 +201,12 @@ export default function KitchenDashboardPage() {
                                                 )}>
                                                     {order.token}
                                                 </span>
-                                                <Badge variant="secondary" className="w-fit text-[10px] font-black uppercase tracking-tighter">
+                                                {order.userName && (
+                                                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight truncate max-w-[120px] leading-tight">
+                                                        {order.userName.split(' ')[0]}
+                                                    </span>
+                                                )}
+                                                <Badge variant="secondary" className="w-fit text-[10px] font-black uppercase tracking-tighter mt-1">
                                                     {formatDistanceToNow(order.createdAt)} ago
                                                 </Badge>
                                             </div>

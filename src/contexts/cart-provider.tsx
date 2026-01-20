@@ -28,6 +28,13 @@ function cartReducer(state: CartState, action: CartAction): CartState {
 
         case "ADD_ITEM": {
             const item = action.payload;
+
+            // Validate item price to prevent invalid totals
+            if (typeof item.price !== 'number' || isNaN(item.price)) {
+                console.warn("Ignored item with invalid price:", item.name);
+                return state;
+            }
+
             const existing = state.items.find((i) => i.itemId === item.id);
             if (existing) {
                 return {
@@ -102,7 +109,7 @@ interface CartContextType {
     increment: (itemId: string) => void;
     decrement: (itemId: string) => void;
     clearCart: () => void;
-    checkout: (studentId: string) => Promise<{ orderId: string, token: number; otp: string }>;
+    checkout: (studentId: string, finalTotal: number, isParcel: boolean, platformCharges: number) => Promise<{ orderId: string, token: number; otp: string }>;
     getItemQty: (itemId: string) => number;
 }
 
@@ -130,7 +137,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
             if (stored) {
                 const parsed = JSON.parse(stored);
                 if (Array.isArray(parsed)) {
-                    return { items: parsed, isHydrated: true };
+                    // Filter invalid items
+                    const validItems = parsed.filter((i: any) => typeof i.price === 'number' && !isNaN(i.price));
+                    if (validItems.length !== parsed.length) {
+                        console.warn(`Removed ${parsed.length - validItems.length} invalid items from cart`);
+                    }
+                    return { items: validItems, isHydrated: true };
                 }
             }
         } catch (e) {
@@ -152,7 +164,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     // Computed values
     const totalItems = state.items.reduce((sum, item) => sum + item.qty, 0);
-    const totalPrice = state.items.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const totalPrice = state.items.reduce((sum, item) => {
+        if (!item.price || isNaN(item.price)) {
+            console.error(`Item ${item.name} has invalid price:`, item.price);
+            return sum;
+        }
+        return sum + item.price * item.qty;
+    }, 0);
 
     // Actions
     const addItem = useCallback((item: MenuItem) => {
@@ -175,41 +193,52 @@ export function CartProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "CLEAR" });
     }, []);
 
-    const checkout = useCallback(async (studentId: string) => {
-        const { auth } = await import("@/lib/firebase");
+    const checkout = useCallback(async (studentId: string, finalTotalArg?: number, isParcelArg?: boolean, platformChargesArg?: number) => {
+        const finalTotal = finalTotalArg ?? totalPrice;
+        const isParcel = isParcelArg ?? false;
+        const platformCharges = platformChargesArg ?? 0;
+
+        const { db, auth } = await import("@/lib/firebase");
+        const { doc, runTransaction, serverTimestamp, collection } = await import("firebase/firestore");
 
         const user = auth.currentUser;
         if (!user) throw new Error("Not authenticated");
 
-        const idToken = await user.getIdToken();
+        try {
+            const token = await user.getIdToken();
 
-        const response = await fetch('/api/orders/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`
-            },
-            body: JSON.stringify({
-                items: state.items.map(i => ({
-                    name: i.name,
-                    qty: i.qty,
-                    price: i.price
-                })),
-                totalPrice,
-            }),
-        });
+            // Validate finalTotal to prevent undefined/NaN errors
+            if (!finalTotal || isNaN(finalTotal) || finalTotal <= 0) {
+                throw new Error('Invalid order total. Please try again.');
+            }
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Checkout failed');
+            const response = await fetch('/api/orders/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    items: state.items,
+                    totalPrice: finalTotal,
+                    isParcel,
+                    platformCharges
+                })
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to create order');
+            }
+
+            const result = await response.json();
+            clearCart();
+            return result;
+
+        } catch (error: any) {
+            console.error("Order creation failed:", error);
+            throw new Error(error.message || "Failed to create order");
         }
-
-        const result = await response.json();
-
-        // Clear cart after success
-        clearCart();
-
-        return result; // contains { orderId, token, otp }
     }, [state.items, totalPrice, clearCart]);
 
     const getItemQty = useCallback(

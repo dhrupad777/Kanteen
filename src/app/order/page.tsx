@@ -55,37 +55,19 @@ function OrderContent() {
     const [name, setName] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const [isTestMode, setIsTestMode] = useState(false);
 
     // Profile checking
     const [checkingProfile, setCheckingProfile] = useState(true);
     const [profileExists, setProfileExists] = useState(false);
 
-    // Test User
-    const TEST_USER = {
-        uid: "test-user-123",
-        email: "guest@kanteen.com",
-        displayName: "Guest User",
-        photoURL: null
-    };
-
-    const effectiveUser = isTestMode ? TEST_USER : user;
-    const effectiveProfile = isTestMode ? { name: "Guest User", email: "guest@kanteen.com", photoURL: null } : userProfile;
-
     // Menu items
     const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({});
 
     // Cart
-    const { totalItems, checkout } = useCart();
+    const { totalItems, totalPrice, checkout } = useCart();
 
     useEffect(() => {
         async function check() {
-            if (isTestMode) {
-                setProfileExists(true);
-                setCheckingProfile(false);
-                return;
-            }
-
             if (user) {
                 if (userProfile) {
                     setProfileExists(true);
@@ -99,18 +81,10 @@ function OrderContent() {
                 setCheckingProfile(false);
             }
         }
-        if (!loading || isTestMode) {
+        if (!loading) {
             check();
         }
-    }, [user, userProfile, loading, isTestMode]);
-
-    function handleTestMode() {
-        setIsTestMode(true);
-        toast({
-            title: "Test Mode Active",
-            description: "You are browsing as a guest user.",
-        });
-    }
+    }, [user, userProfile, loading]);
 
     async function handleGoogleSignIn() {
         try {
@@ -122,14 +96,14 @@ function OrderContent() {
 
     async function handleNameSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!effectiveUser || !name.trim()) return;
+        if (!user || !name.trim()) return;
 
         setSubmitting(true);
         try {
-            await createStudentProfile(effectiveUser.uid, {
+            await createStudentProfile(user.uid, {
                 name: name.trim(),
-                email: effectiveUser.email || "",
-                photoURL: effectiveUser.photoURL || ""
+                email: user.email || "",
+                photoURL: user.photoURL || ""
             });
             setProfileExists(true);
         } catch (error) {
@@ -149,7 +123,7 @@ function OrderContent() {
             return;
         }
 
-        if (!effectiveUser?.uid) {
+        if (!user?.uid) {
             toast({
                 title: "Authentication required",
                 description: "Please sign in to complete your order.",
@@ -160,7 +134,7 @@ function OrderContent() {
 
         setSubmitting(true);
         try {
-            const { orderId, token, otp } = await checkout(effectiveUser.uid);
+            const { orderId, token, otp } = await checkout(user.uid, totalPrice, false, 0);
             // Store OTP in local storage for the student to see later
             localStorage.setItem(`kanteen_otp_${orderId}`, otp);
             router.push(`/order/success?token=${token}&orderId=${orderId}`);
@@ -200,7 +174,7 @@ function OrderContent() {
     }
 
     // State 1: Not Signed In - Orange Theme
-    if (!effectiveUser) {
+    if (!user) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
                 <div className="w-full max-w-sm text-center">
@@ -233,14 +207,6 @@ function OrderContent() {
                             </svg>
                             Continue with Google
                         </Button>
-
-                        <Button
-                            variant="ghost"
-                            className="w-full text-gray-500 hover:text-gray-900"
-                            onClick={handleTestMode}
-                        >
-                            Continue in Test Mode
-                        </Button>
                     </div>
                 </div>
             </div>
@@ -248,7 +214,7 @@ function OrderContent() {
     }
 
     // State 2: Signed In, Missing Name - Orange Theme
-    if (!profileExists && !effectiveProfile) {
+    if (!profileExists && !userProfile) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
                 <div className="w-full max-w-sm">
@@ -293,52 +259,52 @@ function OrderContent() {
 
     // State 3: Fully Authenticated -> Order Page
     return (
-        <div className="min-h-screen bg-gray-50 pb-32 md:pb-6">
+        <div className="min-h-screen bg-gray-50 pb-28 md:pb-6 overflow-x-hidden">
             {/* Header */}
-            <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-100">
-                <div className="max-w-6xl mx-auto px-4 py-4">
-                    <div className="flex items-center justify-between gap-4">
+            <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-gray-100 safe-area-top">
+                <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
+                    <div className="flex items-center justify-between gap-2 sm:gap-4">
                         <Link
                             href="/student"
-                            className="flex items-center gap-2 text-gray-500 hover:text-primary transition-colors"
+                            className="flex items-center gap-1 sm:gap-2 text-gray-500 hover:text-primary transition-colors shrink-0"
                         >
                             <ArrowLeft className="h-5 w-5" />
-                            <span className="text-sm font-medium hidden sm:inline">Back</span>
+                            <span className="text-xs sm:text-sm font-medium hidden sm:inline">Back</span>
                         </Link>
 
-                        <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+                        <h1 className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight truncate">
                             Kanteen
                         </h1>
 
-                        <div className="flex items-center gap-2">
-                            {effectiveProfile?.photoURL && (
+                        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                            {userProfile?.photoURL && (
                                 <img
-                                    src={effectiveProfile.photoURL}
+                                    src={userProfile.photoURL}
                                     alt=""
-                                    className="h-8 w-8 rounded-full border border-gray-200"
+                                    className="h-7 w-7 sm:h-8 sm:w-8 rounded-full border border-gray-200"
                                 />
                             )}
-                            <span className="text-sm text-gray-600 font-medium hidden sm:inline">
-                                {effectiveProfile?.name?.split(' ')[0] || effectiveUser?.displayName?.split(' ')[0]}
+                            <span className="text-xs sm:text-sm text-gray-600 font-medium hidden sm:inline max-w-[80px] truncate">
+                                {userProfile?.name?.split(' ')[0] || user?.displayName?.split(' ')[0]}
                             </span>
                         </div>
                     </div>
                 </div>
             </header>
 
-            <div className="max-w-6xl mx-auto px-4 py-6">
-                <div className="flex gap-8">
+            <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+                <div className="flex gap-4 md:gap-8">
                     {/* Main content */}
                     <div className="flex-1 min-w-0">
                         {/* Search */}
-                        <div className="relative mb-8">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <div className="relative mb-4 sm:mb-6">
+                            <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                             <Input
                                 placeholder="Search for items..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className={cn(
-                                    "h-12 pl-12 pr-4 text-base rounded-2xl",
+                                    "h-10 sm:h-12 pl-10 sm:pl-12 pr-3 sm:pr-4 text-sm sm:text-base rounded-xl sm:rounded-2xl",
                                     "bg-white border-gray-200 shadow-sm",
                                     "focus:ring-2 focus:ring-primary focus:border-transparent",
                                     "placeholder:text-gray-400"
@@ -386,7 +352,7 @@ function OrderContent() {
                                     </div>
                                 ) : (
                                     /* Category Grid View */
-                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+                                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
                                         {MENU_CATEGORIES.map((cat) => {
                                             const items = groupedItems[cat.value] || [];
                                             if (items.length === 0) return null;

@@ -26,8 +26,56 @@ interface CouponGridProps {
   orders: Order[];
 }
 
+interface CouponButtonProps {
+  couponId: number;
+  isActive: boolean;
+  onClick: (id: number) => void;
+  onMouseDown: (id: number) => void;
+  onMouseUp: () => void;
+  onMouseLeave: () => void;
+  onTouchStart: (id: number) => void;
+  onTouchEnd: () => void;
+}
+
+const CouponButton = React.memo(({
+  couponId,
+  isActive,
+  onClick,
+  onMouseDown,
+  onMouseUp,
+  onMouseLeave,
+  onTouchStart,
+  onTouchEnd
+}: CouponButtonProps) => {
+  return (
+    <motion.div
+      initial={{ scale: 1 }}
+      animate={{ scale: isActive ? [1, 1.1, 1] : 1 }}
+      transition={{ duration: 0.3 }}
+    >
+      <Button
+        variant={isActive ? 'default' : 'outline'}
+        className={cn(
+          'w-full h-12 text-lg font-bold transition-all duration-300 ease-in-out transform',
+          isActive ? 'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90' : 'bg-card text-card-foreground/70 hover:bg-muted',
+          'hover:scale-105 active:scale-95'
+        )}
+        onClick={() => onClick(couponId)}
+        onMouseDown={() => onMouseDown(couponId)}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseLeave}
+        onTouchStart={() => onTouchStart(couponId)}
+        onTouchEnd={onTouchEnd}
+      >
+        {couponId}
+      </Button>
+    </motion.div>
+  );
+}, (prev, next) => prev.isActive === next.isActive && prev.couponId === next.couponId);
+// Custom comparison: handlers are stable, only isActive and ID matter.
+
 export function CouponGrid({ orders }: CouponGridProps) {
-  const { addOrder, deleteOrder, updateOrderCoupon } = useOrders();
+  const { addOrder, deleteOrder, updateOrderCoupon, updateOrderStatus } = useOrders();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -46,33 +94,40 @@ export function CouponGrid({ orders }: CouponGridProps) {
     return map;
   }, [orders]);
 
-  const handleButtonClick = (couponId: number) => {
-    const order = activeOrdersMap.get(couponId);
-    if (order) {
-      deleteOrder(order.id); // Mark as collected
-    } else {
-      addOrder(couponId.toString()); // Add new order
-    }
-  };
+  // Keep ref to map for stable handlers
+  const activeOrdersMapRef = useRef(activeOrdersMap);
+  React.useEffect(() => {
+    activeOrdersMapRef.current = activeOrdersMap;
+  }, [activeOrdersMap]);
 
-  const handleMouseDown = (couponId: number) => {
-    const order = activeOrdersMap.get(couponId);
+  // Stable Handlers
+  const handleButtonClick = React.useCallback((couponId: number) => {
+    const order = activeOrdersMapRef.current.get(couponId);
+    if (order) {
+      updateOrderStatus(order.id, 'PICKED_UP');
+    } else {
+      addOrder(couponId.toString());
+    }
+  }, [addOrder, updateOrderStatus]);
+
+  const handleMouseDown = React.useCallback((couponId: number) => {
+    const order = activeOrdersMapRef.current.get(couponId);
     if (order) {
       longPressTimer.current = setTimeout(() => {
         setSelectedOrder(order);
         setIsActionMenuOpen(true);
-      }, 700); // 700ms for long press
+      }, 700);
     }
-  };
+  }, []);
 
-  const clearLongPressTimer = () => {
+  const clearLongPressTimer = React.useCallback(() => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
     }
-  };
+  }, []);
 
-  const handleTouchStart = (couponId: number) => handleMouseDown(couponId);
-  const handleTouchEnd = () => clearLongPressTimer();
+  const handleTouchStart = React.useCallback((couponId: number) => handleMouseDown(couponId), [handleMouseDown]);
+  const handleTouchEnd = React.useCallback(() => clearLongPressTimer(), [clearLongPressTimer]);
 
 
   const handleEdit = () => {
@@ -101,6 +156,10 @@ export function CouponGrid({ orders }: CouponGridProps) {
     setSelectedOrder(null);
   };
 
+  // Pre-calculate items rendering logic? No, map is fast.
+  // But we need to use the memoized keys from MAX_COUPONS
+  const couponIds = useMemo(() => [...Array(MAX_COUPONS)].map((_, i) => i + 1), []);
+
   return (
     <>
       <Card>
@@ -109,38 +168,20 @@ export function CouponGrid({ orders }: CouponGridProps) {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-15 xl:grid-cols-20 gap-2">
-            {[...Array(MAX_COUPONS)].map((_, i) => {
-              const couponId = i + 1;
-              const order = activeOrdersMap.get(couponId);
-              const isActive = !!order;
-
+            {couponIds.map((couponId) => {
+              const isActive = activeOrdersMap.has(couponId); // Fast O(1)
               return (
-                <motion.div
+                <CouponButton
                   key={couponId}
-                  initial={{ scale: 1 }}
-                  animate={{ scale: isActive ? [1, 1.1, 1] : 1 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Button
-                    variant={isActive ? 'default' : 'outline'}
-                    className={cn(
-                      'w-full h-12 text-lg font-bold transition-all duration-300 ease-in-out transform',
-                      isActive ? 'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90' : 'bg-card text-card-foreground/70 hover:bg-muted',
-                      'hover:scale-105 active:scale-95'
-                    )}
-                    onClick={() => {
-                      clearLongPressTimer();
-                      handleButtonClick(couponId);
-                    }}
-                    onMouseDown={() => handleMouseDown(couponId)}
-                    onMouseUp={clearLongPressTimer}
-                    onMouseLeave={clearLongPressTimer}
-                    onTouchStart={() => handleTouchStart(couponId)}
-                    onTouchEnd={handleTouchEnd}
-                  >
-                    {couponId}
-                  </Button>
-                </motion.div>
+                  couponId={couponId}
+                  isActive={isActive}
+                  onClick={handleButtonClick}
+                  onMouseDown={handleMouseDown}
+                  onMouseUp={clearLongPressTimer}
+                  onMouseLeave={clearLongPressTimer}
+                  onTouchStart={handleTouchStart}
+                  onTouchEnd={handleTouchEnd}
+                />
               );
             })}
           </div>

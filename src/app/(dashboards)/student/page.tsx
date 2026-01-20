@@ -37,12 +37,11 @@ export default function StudentDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-2">
         <div>
           <h1 className="font-headline text-3xl font-bold text-primary">
             {user ? `Hello, ${userProfile?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'Student'}` : 'Hello'}
           </h1>
-          <p className="text-muted-foreground mt-1 font-medium">MRC Canteen Dashboard</p>
         </div>
       </div>
 
@@ -58,12 +57,26 @@ export default function StudentDashboardPage() {
 
       <MenuDisplay />
 
-      <Button asChild className="w-full bg-[#FF4500] hover:bg-[#CC3700] text-white shadow-sm h-12 text-lg font-medium">
-        <Link href="/order" className="flex items-center justify-center gap-2">
-          <ShoppingBag className="h-5 w-5" />
-          Order Online
+      <motion.div
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        className="w-full"
+      >
+        <Link href="/order" className="block w-full">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400 via-orange-500 to-red-600 p-1 shadow-lg shadow-orange-500/20">
+            <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
+            <div className="relative flex items-center justify-between bg-white/5 backdrop-blur-sm px-6 py-4 rounded-xl border border-white/20">
+              <div className="flex flex-col text-left">
+                <span className="text-white font-bold text-xl tracking-tight">Order Online</span>
+                <span className="text-orange-50 font-medium text-xs opacity-90">Order. Arrive. Eat.</span>
+              </div>
+              <div className="bg-white/20 p-2.5 rounded-full backdrop-blur-md">
+                <ShoppingBag className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </div>
         </Link>
-      </Button>
+      </motion.div>
 
       {publicReadyOrders.length > 0 && (
         <DashboardSection

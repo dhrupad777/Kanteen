@@ -45,6 +45,9 @@ async function clear() {
     await deleteCollection('orders');
     console.log('Clearing order_counters...');
     await deleteCollection('order_counters');
+    console.log('Clearing daily_reports...');
+    await deleteCollection('daily_reports');
+    // Note: Not clearing users/managers as that would lock people out
     console.log('Database cleared successfully!');
 }
 

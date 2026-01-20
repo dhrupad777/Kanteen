@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
         const decodedToken = await adminAuth.verifyIdToken(idToken);
         const uid = decodedToken.uid;
 
-        const { items, totalPrice } = await request.json();
+        const { items, totalPrice, isParcel, platformCharges } = await request.json();
 
         if (!items || !Array.isArray(items) || items.length === 0) {
             return NextResponse.json({ error: 'Invalid items' }, { status: 400 });
@@ -52,12 +52,16 @@ export async function POST(request: NextRequest) {
 
             const orderData = {
                 studentId: uid,
+                userEmail: decodedToken.email || "",
+                userName: decodedToken.name || "",
                 items: items.map((i: any) => ({
                     name: i.name,
                     quantity: i.qty,
                     price: i.price
                 })),
                 totalPrice,
+                isParcel: isParcel || false,
+                platformCharges: platformCharges || 0,
                 token: nextToken,
                 otpHash,
                 status: 'Preparing',

@@ -21,8 +21,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useAuth } from '@/hooks/use-auth';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
 import { KanteenHeader } from '@/components/kanteen-header';
 import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -34,9 +34,11 @@ const formSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
 });
 
-export default function LoginPage() {
+function LoginContent() {
   const { user, signInWithEmail, signInWithGoogle, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get('redirect') || '/staff';
   const [authError, setAuthError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -49,15 +51,15 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      router.push('/staff');
+      router.push(redirect);
     }
-  }, [user, router]);
+  }, [user, router, redirect]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setAuthError(null);
     try {
       await signInWithEmail(values.email, values.password);
-      router.push('/staff');
+      router.push(redirect);
     } catch (error: any) {
       setAuthError("Invalid email or password. Please try again.");
     }
@@ -67,7 +69,7 @@ export default function LoginPage() {
     setAuthError(null);
     try {
       await signInWithGoogle();
-      router.push('/staff');
+      router.push(redirect);
     } catch (error: any) {
       setAuthError("Google sign-in failed. Please try again.");
     }
@@ -166,5 +168,20 @@ export default function LoginPage() {
         </Card>
       </div>
     </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col min-h-screen">
+        <KanteenHeader />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-16 w-16 animate-spin text-primary" />
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }

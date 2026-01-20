@@ -51,9 +51,17 @@ export function OrderCard({ order, role }: OrderCardProps) {
               'bg-green-200/90 dark:bg-green-900/50 text-green-900 dark:text-green-200': order.status === 'Ready',
             }
           )}>
-            <p className={cn("font-mono tabular-nums leading-none font-black",
-              role === 'student' ? 'text-4xl sm:text-5xl md:text-6xl' : 'text-lg'
-            )}>{displayId}</p>
+            <div className="flex flex-col items-center">
+              <p className={cn("font-mono tabular-nums leading-none font-black",
+                role === 'student' ? 'text-4xl sm:text-5xl md:text-6xl' : 'text-xl'
+              )}>{displayId}</p>
+
+              {role === 'staff' && order.userEmail && (
+                <p className="text-[10px] leading-tight font-medium opacity-80 mt-0.5 truncate max-w-[80px]">
+                  {order.userEmail.split('@')[0]}
+                </p>
+              )}
+            </div>
 
             {role === 'student' && order.status === 'Ready' && order.token && order.token >= 200 && (
               <div className="mt-3 pt-3 border-t border-green-400/30 w-full animate-in fade-in slide-in-from-top-2 duration-500">

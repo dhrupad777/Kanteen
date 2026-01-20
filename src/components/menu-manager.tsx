@@ -175,11 +175,6 @@ export function MenuManager() {
         </div>
     );
 
-    // Get snack options (combined or specific)
-    const snackOptions = [...(options.snacks01 || []), ...(options.snacks02 || [])].filter((v, i, a) => a.indexOf(v) === i).sort();
-    const breakfastOptions = options.breakfast || [];
-    const specialOptions = options.specials || [];
-
     return (
         <Card>
             <CardHeader>
@@ -220,39 +215,35 @@ export function MenuManager() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Sabji</Label>
-                            <Select value={formData.main.sabji} onValueChange={(v) => handleMainChange("sabji", v)}>
-                                <SelectTrigger><SelectValue placeholder="Select Sabji" /></SelectTrigger>
-                                <SelectContent>
-                                    {options.sabji?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                            <Input
+                                value={formData.main.sabji}
+                                onChange={(e) => handleMainChange("sabji", e.target.value)}
+                                placeholder="Enter Sabji"
+                            />
                         </div>
                         <div className="space-y-2">
                             <Label>Dal</Label>
-                            <Select value={formData.main.dal} onValueChange={(v) => handleMainChange("dal", v)}>
-                                <SelectTrigger><SelectValue placeholder="Select Dal" /></SelectTrigger>
-                                <SelectContent>
-                                    {options.dal?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                            <Input
+                                value={formData.main.dal}
+                                onChange={(e) => handleMainChange("dal", e.target.value)}
+                                placeholder="Enter Dal"
+                            />
                         </div>
                         <div className="space-y-2">
                             <Label>Bread</Label>
-                            <Select value={formData.main.bread} onValueChange={(v) => handleMainChange("bread", v)}>
-                                <SelectTrigger><SelectValue placeholder="Select Bread" /></SelectTrigger>
-                                <SelectContent>
-                                    {options.bread?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                            <Input
+                                value={formData.main.bread}
+                                onChange={(e) => handleMainChange("bread", e.target.value)}
+                                placeholder="Enter Bread"
+                            />
                         </div>
                         <div className="space-y-2">
                             <Label>Rice</Label>
-                            <Select value={formData.main.rice} onValueChange={(v) => handleMainChange("rice", v)}>
-                                <SelectTrigger><SelectValue placeholder="Select Rice" /></SelectTrigger>
-                                <SelectContent>
-                                    {options.rice?.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                            <Input
+                                value={formData.main.rice}
+                                onChange={(e) => handleMainChange("rice", e.target.value)}
+                                placeholder="Enter Rice"
+                            />
                         </div>
                     </div>
                 </div>
@@ -263,12 +254,12 @@ export function MenuManager() {
                     <div className="space-y-2">
                         {formData.snacks.map((item, idx) => (
                             <div key={idx} className="flex gap-2">
-                                <Select value={item} onValueChange={(v) => updateSnack(idx, v)}>
-                                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select Snack" /></SelectTrigger>
-                                    <SelectContent>
-                                        {snackOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                                <Input
+                                    value={item}
+                                    onChange={(e) => updateSnack(idx, e.target.value)}
+                                    placeholder="Enter Snack Item"
+                                    className="flex-1"
+                                />
                                 <Button variant="ghost" size="icon" onClick={() => removeSnack(idx)}>
                                     <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
@@ -289,12 +280,12 @@ export function MenuManager() {
                             <div className="space-y-2">
                                 {formData.special.map((item, idx) => (
                                     <div key={idx} className="flex gap-2">
-                                        <Select value={item} onValueChange={(v) => updateSpecial(idx, v)}>
-                                            <SelectTrigger className="flex-1"><SelectValue placeholder="Select Special Item" /></SelectTrigger>
-                                            <SelectContent>
-                                                {specialOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
+                                        <Input
+                                            value={item}
+                                            onChange={(e) => updateSpecial(idx, e.target.value)}
+                                            placeholder="Enter Special Item"
+                                            className="flex-1"
+                                        />
                                         <Button variant="ghost" size="icon" onClick={() => removeSpecial(idx)}>
                                             <Trash2 className="h-4 w-4 text-destructive" />
                                         </Button>

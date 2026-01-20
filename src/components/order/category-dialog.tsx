@@ -27,34 +27,34 @@ export function CategoryDialog({ category, label, items, icon: Icon, image }: Ca
                 <div className="group relative w-full cursor-pointer">
                     <div
                         className={cn(
-                            "flex items-center justify-between p-5 rounded-[24px]", // Horizontal flex, comfortable padding
+                            "flex items-center justify-between p-3 sm:p-5 rounded-[20px] sm:rounded-[24px]",
                             "bg-white border border-gray-100 shadow-sm",
                             "transition-all duration-300 ease-out",
                             "hover:scale-[1.02] hover:shadow-xl hover:shadow-orange-100/50 hover:border-orange-100",
                             "active:scale-95",
-                            "h-24" // Fixed height for consistency
+                            "h-20 sm:h-24"
                         )}
                     >
                         {/* Left Side: Big Label */}
-                        <div className="flex-1 pr-4 z-10">
-                            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight group-hover:text-primary transition-colors">
+                        <div className="flex-1 pr-2 sm:pr-4 z-10 min-w-0">
+                            <h3 className="text-base sm:text-xl md:text-2xl font-bold text-gray-900 leading-tight group-hover:text-primary transition-colors truncate">
                                 {label}
                             </h3>
                         </div>
 
                         {/* Right Side: Icon or Image */}
                         <div className={cn(
-                            "h-16 w-16 sm:h-20 sm:w-20 flex items-center justify-center shrink-0", // Larger, no background
+                            "h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 flex items-center justify-center shrink-0",
                             "text-primary/80 group-hover:text-primary transition-colors"
                         )}>
                             {image ? (
                                 <img
                                     src={image}
                                     alt={label}
-                                    className="h-14 w-14 sm:h-16 sm:w-16 object-contain drop-shadow-sm"
+                                    className="h-10 w-10 sm:h-14 sm:w-14 md:h-16 md:w-16 object-contain drop-shadow-sm"
                                 />
                             ) : (
-                                <Icon className="h-10 w-10 sm:h-12 sm:w-12" />
+                                <Icon className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12" />
                             )}
                         </div>
 
@@ -64,7 +64,7 @@ export function CategoryDialog({ category, label, items, icon: Icon, image }: Ca
                 </div>
             </DialogTrigger>
 
-            <DialogContent className="max-w-3xl h-[85vh] sm:h-[90vh] p-0 flex flex-col overflow-hidden bg-white border-none shadow-2xl rounded-t-[32px] sm:rounded-[32px]">
+            <DialogContent className="max-w-3xl h-[90vh] sm:h-[85vh] md:h-[90vh] p-0 flex flex-col overflow-hidden bg-white border-none shadow-2xl rounded-t-[24px] sm:rounded-t-[32px] sm:rounded-[32px]">
                 {/* Header */}
                 <div className="p-6 pb-4 bg-white/80 backdrop-blur-xl z-10 border-b border-gray-50 shrink-0 flex items-center justify-between">
                     <div className="flex items-center gap-3">

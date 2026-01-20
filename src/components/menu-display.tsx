@@ -75,11 +75,7 @@ export function MenuDisplay() {
             className="w-full max-w-lg mx-auto p-0"
             style={{ fontFamily: "'Product Sans', 'Inter', sans-serif" }}
         >
-            <div className="flex items-center mb-2 px-1">
-                <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600/70">
-                    Prepared Today
-                </h2>
-            </div>
+
 
             <div className="flex flex-col gap-2">
 

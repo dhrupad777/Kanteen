@@ -6,8 +6,12 @@ export interface Order {
   studentId: string;
   items: { name: string; quantity: number; price: number }[];
   totalPrice: number;
+  isParcel?: boolean;
+  platformCharges?: number;
   token: number;
   otpHash: string;
+  userEmail?: string;
+  userName?: string;
   otp?: {
     verifiedAt?: any;
     attempts?: number;

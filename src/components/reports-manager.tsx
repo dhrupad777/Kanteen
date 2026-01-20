@@ -28,8 +28,6 @@ export function ReportsManager() {
 
     useEffect(() => {
         async function setupListener() {
-            const isTestMode = typeof window !== 'undefined' && localStorage.getItem('managerTestMode') === 'true';
-
             let isVerified = false;
             if (user?.email) {
                 isVerified = await checkManagerAllowlist(user.email);
@@ -37,7 +35,6 @@ export function ReportsManager() {
 
             if (!isVerified) {
                 setLoading(false);
-                // In test mode, we just show empty state/loading finished
                 return;
             }
 
@@ -132,17 +129,8 @@ export function ReportsManager() {
                             Live Updates
                         </Badge>
                     </h3>
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Business Insights</p>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Business Insights • Auto-Updated</p>
                 </div>
-                <Button
-                    onClick={generateReport}
-                    disabled={generating}
-                    variant="outline"
-                    className="w-full sm:w-auto font-black h-11 rounded-xl border-slate-200"
-                >
-                    {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calendar className="mr-2 h-4 w-4" />}
-                    RE-SYNC TODAY
-                </Button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { signInWithGoogle, checkManagerAllowlist, createManagerProfile, signOut } from "@/lib/auth";
+import { signInWithGoogle, checkManagerAllowlist, createManagerProfile, signOut, BYPASS_AUTH } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, ShieldAlert, BadgeCheck } from "lucide-react";
@@ -14,6 +14,14 @@ export default function ManagerLoginPage() {
     const router = useRouter();
     const [verifying, setVerifying] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Auto-redirect when in test mode
+    useEffect(() => {
+        if (BYPASS_AUTH) {
+            console.log("🔓 AUTH BYPASS: Auto-redirecting to /staff");
+            router.push("/staff");
+        }
+    }, [router]);
 
     async function handleManagerSignIn() {
         setError(null);
@@ -46,7 +54,8 @@ export default function ManagerLoginPage() {
         }
     }
 
-    if (loading) {
+    // Show loading while redirecting in bypass mode
+    if (loading || BYPASS_AUTH) {
         return (
             <div className="flex flex-col min-h-screen">
                 <KanteenHeader />
@@ -89,25 +98,7 @@ export default function ManagerLoginPage() {
                             Sign in with Google
                         </Button>
 
-                        <div className="relative">
-                            <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t" />
-                            </div>
-                            <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-background px-2 text-muted-foreground">Or</span>
-                            </div>
-                        </div>
 
-                        <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => {
-                                localStorage.setItem('managerTestMode', 'true');
-                                router.push('/staff');
-                            }}
-                        >
-                            Enter Test Mode
-                        </Button>
                     </CardContent>
                 </Card>
             </div>

@@ -26,13 +26,6 @@ export default function StaffDashboardPage() {
 
   useEffect(() => {
     async function verifyManager() {
-      // Check for test mode bypass
-      const isTestMode = localStorage.getItem('managerTestMode') === 'true';
-      if (isTestMode) {
-        setIsAuthorized(true);
-        return;
-      }
-
       if (user && user.email) {
         const allowed = await checkManagerAllowlist(user.email);
         setIsAuthorized(allowed);
@@ -44,8 +37,7 @@ export default function StaffDashboardPage() {
   }, [user, authLoading]);
 
   useEffect(() => {
-    const isTestMode = localStorage.getItem('managerTestMode') === 'true';
-    if (!authLoading && !user && !isTestMode) {
+    if (!authLoading && !user) {
       router.push('/login');
     }
   }, [user, authLoading, router]);

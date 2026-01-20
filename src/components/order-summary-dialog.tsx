@@ -27,7 +27,6 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
                         )}>
                             {order.status}
                         </Badge>
-                        <span className="text-xs text-muted-foreground font-mono">#{order.id.slice(-8)}</span>
                     </div>
                     <DialogTitle className="text-2xl font-black font-headline flex items-center gap-2">
                         Order Token {displayId}
@@ -51,6 +50,18 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
                                 </div>
                             ))}
                         </div>
+                        {order.isParcel && (
+                            <div className="flex justify-between items-center bg-amber-50 p-2 rounded-lg border border-amber-200">
+                                <span className="text-sm font-medium text-amber-900">Parcel Charges</span>
+                                <span className="font-mono font-bold text-sm text-amber-900">₹5</span>
+                            </div>
+                        )}
+                        {order.platformCharges !== undefined && (
+                            <div className="flex justify-between items-center bg-blue-50 p-2 rounded-lg border border-blue-200">
+                                <span className="text-sm font-medium text-blue-900">Platform Convenience Charges</span>
+                                <span className="font-mono font-bold text-sm text-blue-900">₹{order.platformCharges}</span>
+                            </div>
+                        )}
                     </div>
 
                     <Separator />
