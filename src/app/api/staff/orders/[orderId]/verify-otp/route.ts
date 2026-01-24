@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 import { updateDailyReportTransaction } from '@/lib/reports-admin';
 import { BYPASS_AUTH } from '@/lib/auth';
+import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 async function hashOTP(otp: string): Promise<string> {
     return crypto.createHash('sha256').update(otp).digest('hex');
@@ -14,8 +15,34 @@ export async function POST(
     { params }: { params: Promise<{ orderId: string }> }
 ) {
     try {
+        // Rate limit by IP (10 OTP verifications per minute)
+        const clientIP = getClientIP(request);
+        const { success: rateLimitOk, resetIn } = rateLimit(`verify-otp:${clientIP}`, 10, 60000);
+        if (!rateLimitOk) {
+            return NextResponse.json(
+                { error: 'Too many attempts. Please wait before trying again.' },
+                {
+                    status: 429,
+                    headers: { 'Retry-After': Math.ceil(resetIn / 1000).toString() }
+                }
+            );
+        }
+
         const { orderId } = await params;
         const { otp } = await request.json();
+
+        // Validate OTP input to prevent DoS via expensive hash on large inputs
+        if (!otp || typeof otp !== 'string') {
+            return NextResponse.json({ error: 'OTP is required' }, { status: 400 });
+        }
+        if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+            return NextResponse.json({ error: 'Invalid OTP format. Must be 6 digits.' }, { status: 400 });
+        }
+
+        // Validate orderId
+        if (!orderId || typeof orderId !== 'string' || orderId.length > 100) {
+            return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
+        }
 
         let userId = 'test-user-123';
 

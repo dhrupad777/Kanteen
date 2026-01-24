@@ -51,6 +51,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
 
     const listeners: (() => void)[] = [];
     const ordersMap = new Map<string, Order>();
+    const MAX_ORDERS_IN_MEMORY = 1000; // Prevent unbounded memory growth
 
     const updateOrdersFromSnapshot = (snapshot: any) => {
       snapshot.docChanges().forEach((change: any) => {
@@ -58,6 +59,11 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         if (change.type === 'removed') {
           ordersMap.delete(doc.id);
         } else {
+          // Prevent unbounded growth - skip new orders if at limit
+          if (ordersMap.size >= MAX_ORDERS_IN_MEMORY && !ordersMap.has(doc.id)) {
+            console.warn('OrderProvider: Max orders limit reached, skipping new order');
+            return;
+          }
           const data = doc.data();
           ordersMap.set(doc.id, {
             id: doc.id,

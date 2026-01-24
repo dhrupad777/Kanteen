@@ -3,10 +3,11 @@ import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, User }
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 // ============================================================
-// TESTING MODE: Authentication is bypassed for UI/UX testing
-// Set BYPASS_AUTH to false to re-enable real authentication
+// TESTING MODE: Authentication bypass
+// Set NEXT_PUBLIC_BYPASS_AUTH=true in .env.local for local testing
+// In production, this should NEVER be true
 // ============================================================
-export const BYPASS_AUTH = true;
+export const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
 
 // Mock user for testing
 const MOCK_USER = {

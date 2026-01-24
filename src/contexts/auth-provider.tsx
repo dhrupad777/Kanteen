@@ -7,13 +7,7 @@ import { signInWithEmailAndPassword, signOut, User, createUserWithEmailAndPasswo
 import { auth, db } from '@/lib/firebase';
 import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
 import type { UserProfile } from "@/types";
-import { signInWithGoogle as googleSignIn } from '@/lib/auth';
-
-// ============================================================
-// TESTING MODE: Authentication is bypassed for UI/UX testing
-// Set BYPASS_AUTH to false to re-enable real authentication
-// ============================================================
-const BYPASS_AUTH = true;
+import { signInWithGoogle as googleSignIn, BYPASS_AUTH } from '@/lib/auth';
 
 // Mock user for testing (simulates a logged-in user)
 const MOCK_USER = {
