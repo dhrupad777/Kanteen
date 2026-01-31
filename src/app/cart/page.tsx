@@ -2,6 +2,7 @@
 
 import { useCart } from "@/contexts/cart-provider";
 import { useAuth } from "@/hooks/use-auth";
+import { useRazorpay } from "@/hooks/use-razorpay";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag, Package } from "lucide-react";
@@ -14,9 +15,38 @@ export default function CartPage() {
     const router = useRouter();
     const { toast } = useToast();
     const { user } = useAuth();
-    const { items, isHydrated, totalItems, totalPrice, increment, decrement, removeItem, clearCart, checkout } = useCart();
+    const { items, isHydrated, totalItems, totalPrice, increment, decrement, removeItem, clearCart, getCheckoutItems } = useCart();
     const [processing, setProcessing] = useState(false);
     const [isParcel, setIsParcel] = useState(false);
+
+    // Razorpay checkout
+    const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
+        onSuccess: (response) => {
+            localStorage.setItem(`kanteen_otp_${response.orderId}`, response.otp);
+            clearCart();
+            toast({
+                title: "Order Placed Successfully!",
+                description: `Token: ${response.token}`,
+                variant: "default",
+            });
+            router.push(`/order/success?token=${response.token}&orderId=${response.orderId}`);
+        },
+        onError: (error) => {
+            toast({
+                title: "Payment Failed",
+                description: error,
+                variant: "destructive",
+            });
+            setProcessing(false);
+        },
+        onCancel: () => {
+            toast({
+                title: "Payment Cancelled",
+                description: "Your cart is still saved.",
+            });
+            setProcessing(false);
+        },
+    });
 
     // Calculate final price including parcel charge and platform charges
     const parcelCharge = 5;
@@ -183,7 +213,7 @@ export default function CartPage() {
                     </div>
                     <Button
                         className="w-full h-14 text-base font-semibold rounded-2xl bg-primary hover:bg-primary/90 text-white transition-all shadow-lg shadow-orange-200"
-                        disabled={items.length === 0 || processing}
+                        disabled={items.length === 0 || processing || paymentLoading}
                         onClick={async () => {
                             if (!user?.uid) {
                                 toast({
@@ -196,30 +226,22 @@ export default function CartPage() {
                             }
                             setProcessing(true);
                             try {
-                                const { orderId, token, otp } = await checkout(user.uid, finalTotal, isParcel, platformCharges);
-                                // Store OTP in local storage for the student to see later
-                                localStorage.setItem(`kanteen_otp_${orderId}`, otp);
-
-                                toast({
-                                    title: "Order Placed Successfully!",
-                                    description: `Token: ${token}`,
-                                    variant: "default",
+                                const checkoutItems = getCheckoutItems();
+                                await razorpayCheckout({
+                                    items: checkoutItems,
+                                    isParcel: isParcel,
+                                    platformCharges: platformCharges,
                                 });
-
-                                router.push(`/order/success?token=${token}&orderId=${orderId}`);
+                                // Success handled by onSuccess callback
                             } catch (error: any) {
-                                console.error("Checkout failed:", error);
-                                toast({
-                                    title: "Checkout Failed",
-                                    description: error.message || "Something went wrong. Please try again.",
-                                    variant: "destructive",
-                                });
-                            } finally {
-                                setProcessing(false);
+                                // Error and cancel handled by callbacks
+                                if (!error.message?.includes('cancelled')) {
+                                    console.error("Checkout failed:", error);
+                                }
                             }
                         }}
                     >
-                        {processing ? "Processing..." : "Proceed to Pay"}
+                        {processing || paymentLoading ? "Processing..." : "Proceed to Pay"}
                     </Button>
                 </div>
             </div>

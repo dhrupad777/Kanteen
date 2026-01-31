@@ -1,5 +1,7 @@
 
-export type OrderStatus = 'PAID' | 'Preparing' | 'Ready' | 'Completed' | 'Archived' | 'PICKED_UP';
+
+export type OrderStatus = 'pending' | 'PAID' | 'Preparing' | 'Ready' | 'Completed' | 'Archived' | 'PICKED_UP';
+
 
 export interface Order {
   id: string;
@@ -71,4 +73,50 @@ export interface DailyMenu {
 
 export interface MenuOptions {
   [category: string]: string[];
+}
+
+// ============================================================
+// Razorpay Payment Integration Types
+// ============================================================
+
+export type PaymentStatus = 'created' | 'paid' | 'failed';
+
+export interface CheckoutItem {
+  itemId: string;
+  name: string;
+  qty: number;
+  price: number;
+}
+
+// API Request/Response types
+export interface CreateRazorpayOrderRequest {
+  items: CheckoutItem[];
+  isParcel?: boolean;
+  platformCharges?: number;
+}
+
+export interface CreateRazorpayOrderResponse {
+  razorpayOrderId: string;
+  orderId: string;
+  amount: number;         // in paise
+  currency: string;
+  keyId: string;          // Razorpay key ID (public)
+  prefill: {
+    name: string;
+    email: string;
+  };
+}
+
+export interface VerifyPaymentRequest {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+  orderId: string;
+}
+
+export interface VerifyPaymentResponse {
+  success: boolean;
+  orderId: string;
+  token: number;
+  otp: string;    // plaintext, shown only once
 }

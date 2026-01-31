@@ -3,7 +3,6 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 import { updateDailyReportTransaction } from '@/lib/reports-admin';
-import { BYPASS_AUTH } from '@/lib/auth';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 async function hashOTP(otp: string): Promise<string> {
@@ -17,7 +16,7 @@ export async function POST(
     try {
         // Rate limit by IP (10 OTP verifications per minute)
         const clientIP = getClientIP(request);
-        const { success: rateLimitOk, resetIn } = rateLimit(`verify-otp:${clientIP}`, 10, 60000);
+        const { success: rateLimitOk, resetIn } = rateLimit(`verify-otp:${clientIP}`, 60, 60000);
         if (!rateLimitOk) {
             return NextResponse.json(
                 { error: 'Too many attempts. Please wait before trying again.' },
@@ -44,34 +43,28 @@ export async function POST(
             return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
         }
 
-        let userId = 'test-user-123';
-
-        // Skip authentication if in testing mode
-        if (!BYPASS_AUTH) {
-            // 1. Authenticate Request
-            const authHeader = request.headers.get('Authorization');
-            if (!authHeader?.startsWith('Bearer ')) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
-
-            const idToken = authHeader.split('Bearer ')[1];
-            const decodedToken = await adminAuth.verifyIdToken(idToken);
-            const email = decodedToken.email;
-            userId = decodedToken.uid;
-
-            if (!email) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
-
-            // 2. Verify Manager Permissions
-            const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
-            const allowlistSnap = await allowlistRef.get();
-            if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
-                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-            }
-        } else {
-            console.log("🔓 AUTH BYPASS: Skipping authentication in verify-otp route");
+        // Authenticate Request
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
+
+        const idToken = authHeader.split('Bearer ')[1];
+        const decodedToken = await adminAuth.verifyIdToken(idToken);
+        const email = decodedToken.email;
+        const userId = decodedToken.uid;
+
+        if (!email) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Verify Manager Permissions
+        const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
+        const allowlistSnap = await allowlistRef.get();
+        if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
 
         // 3. Run Atomic Transaction for Order + Report
         const orderRef = adminDb.collection('orders').doc(orderId);

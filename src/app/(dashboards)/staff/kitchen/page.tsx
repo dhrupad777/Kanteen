@@ -218,13 +218,15 @@ export default function KitchenDashboardPage() {
                                 {ordersByStatus[status].map((order) => (
                                     <Card key={order.id} className={cn(
                                         "overflow-hidden border-none shadow-sm hover:shadow-md transition-all duration-300",
-                                        status === 'Preparing' ? "bg-white dark:bg-slate-900" : "bg-emerald-50/50 dark:bg-emerald-950/20"
+                                        status === 'Preparing' && "bg-white dark:bg-slate-900",
+                                        status === 'Ready' && "bg-emerald-50/50 dark:bg-emerald-950/20"
                                     )}>
                                         <CardHeader className="p-4 flex flex-row items-start justify-between space-y-0">
                                             <div className="flex flex-col">
                                                 <span className={cn(
                                                     "text-4xl md:text-5xl font-black tracking-tighter leading-none mb-1",
-                                                    status === 'Preparing' ? "text-primary" : "text-emerald-600 dark:text-emerald-400"
+                                                    status === 'Preparing' && "text-primary",
+                                                    status === 'Ready' && "text-emerald-600 dark:text-emerald-400"
                                                 )}>
                                                     {order.token}
                                                 </span>
@@ -239,9 +241,11 @@ export default function KitchenDashboardPage() {
                                             </div>
                                             <div className={cn(
                                                 "p-2 rounded-lg",
-                                                status === 'Preparing' ? "bg-blue-50 text-blue-600" : "bg-emerald-100 text-emerald-700"
+                                                status === 'Preparing' && "bg-blue-50 text-blue-600",
+                                                status === 'Ready' && "bg-emerald-100 text-emerald-700"
                                             )}>
-                                                {status === 'Preparing' ? <Clock className="w-4 h-4" /> : <Package className="w-4 h-4" />}
+                                                {status === 'Preparing' && <Clock className="w-4 h-4" />}
+                                                {status === 'Ready' && <Package className="w-4 h-4" />}
                                             </div>
                                         </CardHeader>
                                         <CardContent className="p-4 pt-0 space-y-4">
@@ -255,6 +259,7 @@ export default function KitchenDashboardPage() {
                                             </div>
 
                                             <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+
                                                 {status === 'Preparing' && (
                                                     <Button
                                                         onClick={() => handleStatusUpdate(order.id, 'Ready')}

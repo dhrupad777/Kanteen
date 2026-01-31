@@ -1,0 +1,13 @@
+Test API Key = rzp_test_SAQKhwk2AKbIOu
+
+Test Key Secret = Khjtq1mVTHsPk882KQ6clGqR
+
+Secret: Create a strong secret (e.g., kanteen_prod_secret_123).
+
+
+gcloud run services update ssrkanteenmrc --region us-central1 --update-env-vars=RAZORPAY_KEY_ID=rzp_test_SAQKhwk2AKbIOu,RAZORPAY_KEY_SECRET=Khjtq1mVTHsPk882KQ6clGqR,RAZORPAY_WEBHOOK_SECRET=kanteen_prod_secret_123,NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_SAQKhwk2AKbIOu --quiet
+
+new
+
+key_id	key_secret
+rzp_live_SAalSa1fBVgSZG	tOGhwa5JO4kyIdSc5RFdrHSa

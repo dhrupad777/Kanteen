@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 // Order-specific imports
 import { CartProvider, useCart } from "@/contexts/cart-provider";
 import { useMenuItems } from "@/hooks/use-menu-items";
+import { useRazorpay } from "@/hooks/use-razorpay";
 import { CategoryDialog } from "@/components/order/category-dialog";
 import { MenuItemCard, MenuItemCardSkeleton } from "@/components/order/menu-item-card";
 import { CartPanel } from "@/components/order/cart-panel";
@@ -66,7 +67,32 @@ function OrderContent() {
     const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({});
 
     // Cart
-    const { totalItems, totalPrice, checkout } = useCart();
+    const { totalItems, totalPrice, getCheckoutItems, clearCart } = useCart();
+
+    // Razorpay
+    const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
+        onSuccess: (response) => {
+            // Store OTP in local storage for the student to see
+            localStorage.setItem(`kanteen_otp_${response.orderId}`, response.otp);
+            clearCart();
+            router.push(`/order/success?token=${response.token}&orderId=${response.orderId}`);
+        },
+        onError: (error) => {
+            toast({
+                title: "Payment failed",
+                description: error,
+                variant: "destructive",
+            });
+            setSubmitting(false);
+        },
+        onCancel: () => {
+            toast({
+                title: "Payment cancelled",
+                description: "You cancelled the payment. Your cart is still saved.",
+            });
+            setSubmitting(false);
+        },
+    });
 
     useEffect(() => {
         async function check() {
@@ -136,19 +162,18 @@ function OrderContent() {
 
         setSubmitting(true);
         try {
-            const { orderId, token, otp } = await checkout(user.uid, totalPrice, false, 0);
-            // Store OTP in local storage for the student to see later
-            localStorage.setItem(`kanteen_otp_${orderId}`, otp);
-            router.push(`/order/success?token=${token}&orderId=${orderId}`);
-        } catch (error) {
-            console.error("Checkout failed", error);
-            toast({
-                title: "Checkout failed",
-                description: "Something went wrong while processing your order.",
-                variant: "destructive",
+            const checkoutItems = getCheckoutItems();
+            await razorpayCheckout({
+                items: checkoutItems,
+                isParcel: false,
+                platformCharges: 0,
             });
-        } finally {
-            setSubmitting(false);
+            // Success is handled by onSuccess callback
+        } catch (error: any) {
+            // Error and cancel are handled by callbacks
+            if (!error.message?.includes('cancelled')) {
+                console.error("Checkout failed", error);
+            }
         }
     }
 

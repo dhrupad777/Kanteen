@@ -1,7 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
-import { BYPASS_AUTH } from '@/lib/auth';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 // Input validation constants
@@ -46,29 +45,25 @@ export async function POST(
             );
         }
 
-        // Skip authentication if in testing mode
-        if (!BYPASS_AUTH) {
-            const authHeader = request.headers.get('Authorization');
-            if (!authHeader?.startsWith('Bearer ')) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
+        // Authenticate Request
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
-            const idToken = authHeader.split('Bearer ')[1];
-            const decodedToken = await adminAuth.verifyIdToken(idToken);
-            const email = decodedToken.email;
+        const idToken = authHeader.split('Bearer ')[1];
+        const decodedToken = await adminAuth.verifyIdToken(idToken);
+        const email = decodedToken.email;
 
-            if (!email) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
+        if (!email) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
-            // Verify Manager
-            const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
-            const allowlistSnap = await allowlistRef.get();
-            if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
-                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-            }
-        } else {
-            console.log("🔓 AUTH BYPASS: Skipping authentication in update-coupon route");
+        // Verify Manager
+        const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
+        const allowlistSnap = await allowlistRef.get();
+        if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
         await adminDb.collection('orders').doc(orderId).update({

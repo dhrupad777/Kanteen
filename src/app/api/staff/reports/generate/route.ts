@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { BYPASS_AUTH } from '@/lib/auth';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
@@ -38,32 +37,28 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
         }
 
-        // Skip authentication if in testing mode
-        if (!BYPASS_AUTH) {
-            const authHeader = request.headers.get('Authorization');
-            if (!authHeader?.startsWith('Bearer ')) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
-
-            const idToken = authHeader.split('Bearer ')[1];
-            const decodedToken = await adminAuth.verifyIdToken(idToken);
-            const email = decodedToken.email;
-
-            if (!email) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
-
-            // Verify manager
-            const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
-            const allowlistSnap = await allowlistRef.get();
-            if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
-                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-            }
-        } else {
-            console.log("🔓 AUTH BYPASS: Skipping authentication in generate report route");
+        // Authenticate Request
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // FIX: Use dateKey field in query instead of fetching all orders (N+1 fix)
+        const idToken = authHeader.split('Bearer ')[1];
+        const decodedToken = await adminAuth.verifyIdToken(idToken);
+        const email = decodedToken.email;
+        const userId = decodedToken.uid;
+
+        if (!email) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Verify manager
+        const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
+        const allowlistSnap = await allowlistRef.get();
+        if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         // Query only completed/picked up orders for the specific date
         const ordersSnapshot = await adminDb.collection('orders')
             .where('dateKey', '==', date)
@@ -94,7 +89,7 @@ export async function POST(request: NextRequest) {
             totalRevenue,
             itemSummary,
             generatedAt: FieldValue.serverTimestamp(),
-            generatedBy: BYPASS_AUTH ? 'test-user-123' : 'authenticated-user'
+            generatedBy: userId
         };
 
         await adminDb.collection('daily_reports').doc(date).set(reportData);

@@ -1,30 +1,80 @@
 import * as admin from 'firebase-admin';
+import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import { getAuth, Auth } from 'firebase-admin/auth';
 
-if (!admin.apps.length) {
-    // In production (Firebase Hosting/Functions), we should rely on Automatic Default Credentials (ADC)
-    // or the FIREBASE_CONFIG env var.
-    // We only try to load the local file in development.
-    if (process.env.NODE_ENV === 'development') {
-        try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const serviceAccount = require('../../firebase-service-account.json');
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount)
-            });
-        } catch (error) {
-            // Fallback for dev if file missing
-            console.warn('Development: Service account file missing, trying default credentials...');
-            admin.initializeApp();
-        }
-    } else {
-        // Production
-        try {
-            admin.initializeApp();
-        } catch (error) {
-            console.error('Firebase Admin Init Error:', error);
-        }
+// Your Firebase project ID
+const FIREBASE_PROJECT_ID = 'studio-1083756985-9d2c6';
+
+// Singleton instances
+let _app: admin.app.App | null = null;
+let _db: Firestore | null = null;
+let _auth: Auth | null = null;
+
+/**
+ * Get or create the Firebase app instance
+ */
+function getApp(): admin.app.App {
+    if (_app) {
+        return _app;
     }
+
+    // Check if default app already exists
+    if (admin.apps.length > 0) {
+        _app = admin.apps[0]!;
+        return _app;
+    }
+
+    // Initialize new app
+    const projectId = process.env.GCLOUD_PROJECT ||
+                      process.env.GOOGLE_CLOUD_PROJECT ||
+                      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+                      FIREBASE_PROJECT_ID;
+
+    console.log(`Initializing Firebase Admin with project: ${projectId}`);
+
+    _app = admin.initializeApp({ projectId });
+    return _app;
 }
 
-export const adminDb = admin.firestore();
-export const adminAuth = admin.auth();
+/**
+ * Get Firestore instance
+ */
+export function getAdminDb(): Firestore {
+    if (!_db) {
+        const app = getApp();
+        _db = getFirestore(app);
+    }
+    return _db;
+}
+
+/**
+ * Get Auth instance
+ */
+export function getAdminAuth(): Auth {
+    if (!_auth) {
+        const app = getApp();
+        _auth = getAuth(app);
+    }
+    return _auth;
+}
+
+// For backward compatibility
+export const adminDb = {
+    collection: (path: string) => getAdminDb().collection(path),
+    doc: (path: string) => getAdminDb().doc(path),
+    runTransaction: <T>(fn: (transaction: admin.firestore.Transaction) => Promise<T>) =>
+        getAdminDb().runTransaction(fn),
+    batch: () => getAdminDb().batch(),
+};
+
+export const adminAuth = {
+    verifyIdToken: (token: string) => getAdminAuth().verifyIdToken(token),
+    getUser: (uid: string) => getAdminAuth().getUser(uid),
+};
+
+export const firebaseInitialized = true;
+
+export function getFirebaseAdmin() {
+    getApp(); // Ensure initialized
+    return admin;
+}

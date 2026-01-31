@@ -107,6 +107,14 @@ function cartReducer(state: CartState, action: CartAction): CartState {
     }
 }
 
+// Checkout items format for Razorpay
+interface CheckoutItem {
+    itemId: string;
+    name: string;
+    qty: number;
+    price: number;
+}
+
 // Context type
 interface CartContextType {
     items: CartItem[];
@@ -118,19 +126,11 @@ interface CartContextType {
     increment: (itemId: string) => void;
     decrement: (itemId: string) => void;
     clearCart: () => void;
-    checkout: (studentId: string, finalTotal: number, isParcel: boolean, platformCharges: number) => Promise<{ orderId: string, token: number; otp: string }>;
     getItemQty: (itemId: string) => number;
+    getCheckoutItems: () => CheckoutItem[];
 }
 
 const CartContext = createContext<CartContextType | null>(null);
-
-// Helper for hashing
-async function hashOTP(otp: string): Promise<string> {
-    const msgUint8 = new TextEncoder().encode(otp);
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgUint8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 // Provider
 export function CartProvider({ children }: { children: ReactNode }) {
@@ -222,53 +222,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "CLEAR" });
     }, []);
 
-    const checkout = useCallback(async (studentId: string, finalTotalArg?: number, isParcelArg?: boolean, platformChargesArg?: number) => {
-        const finalTotal = finalTotalArg ?? totalPrice;
-        const isParcel = isParcelArg ?? false;
-        const platformCharges = platformChargesArg ?? 0;
-
-        const { db, auth } = await import("@/lib/firebase");
-        const { doc, runTransaction, serverTimestamp, collection } = await import("firebase/firestore");
-
-        const user = auth.currentUser;
-        if (!user) throw new Error("Not authenticated");
-
-        try {
-            const token = await user.getIdToken();
-
-            // Validate finalTotal to prevent undefined/NaN errors
-            if (!finalTotal || isNaN(finalTotal) || finalTotal <= 0) {
-                throw new Error('Invalid order total. Please try again.');
-            }
-
-            const response = await fetch('/api/orders/create', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    items: state.items,
-                    totalPrice: finalTotal,
-                    isParcel,
-                    platformCharges
-                })
-            });
-
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || 'Failed to create order');
-            }
-
-            const result = await response.json();
-            clearCart();
-            return result;
-
-        } catch (error: any) {
-            console.error("Order creation failed:", error);
-            throw new Error(error.message || "Failed to create order");
-        }
-    }, [state.items, totalPrice, clearCart]);
+    const getCheckoutItems = useCallback((): CheckoutItem[] => {
+        return state.items.map(item => ({
+            itemId: item.itemId,
+            name: item.name,
+            qty: item.qty,
+            price: item.price,
+        }));
+    }, [state.items]);
 
     const getItemQty = useCallback(
         (itemId: string) => {
@@ -290,8 +251,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 increment,
                 decrement,
                 clearCart,
-                checkout,
                 getItemQty,
+                getCheckoutItems,
             }}
         >
             {children}

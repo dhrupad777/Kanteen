@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { checkManagerAllowlist, BYPASS_AUTH } from '@/lib/auth';
 import { updateDailyReportOnCompletion } from '@/lib/reports-admin';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
@@ -41,32 +40,26 @@ export async function POST(
             );
         }
 
-        let userId = 'test-user-123';
+        // Authenticate Request
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
-        // Skip authentication if in testing mode
-        if (!BYPASS_AUTH) {
-            const authHeader = request.headers.get('Authorization');
-            if (!authHeader?.startsWith('Bearer ')) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
+        const idToken = authHeader.split('Bearer ')[1];
+        const decodedToken = await adminAuth.verifyIdToken(idToken);
+        const email = decodedToken.email;
+        const userId = decodedToken.uid;
 
-            const idToken = authHeader.split('Bearer ')[1];
-            const decodedToken = await adminAuth.verifyIdToken(idToken);
-            const email = decodedToken.email;
-            userId = decodedToken.uid;
+        if (!email) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
-            if (!email) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
-
-            // Verify if the user is a manager (server-side check)
-            const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
-            const allowlistSnap = await allowlistRef.get();
-            if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
-                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-            }
-        } else {
-            console.log("🔓 AUTH BYPASS: Skipping authentication in status route");
+        // Verify if the user is a manager (server-side check)
+        const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
+        const allowlistSnap = await allowlistRef.get();
+        if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
         const updateData: any = {

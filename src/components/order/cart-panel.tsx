@@ -115,6 +115,9 @@ export function CartPanel({ onCheckout, className }: CartPanelProps) {
                 >
                     Proceed to Pay
                 </Button>
+                <div className="mt-3 text-center">
+                    <p className="text-[10px] text-gray-400 font-mono">UPI ID: Paytmqr698fb7@ptys</p>
+                </div>
             </div>
         </div>
     );
