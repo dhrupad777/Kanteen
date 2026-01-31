@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { MenuItem, MenuCategory, MENU_CATEGORIES } from "@/types/menu-item";
 import { MenuItemCard, MenuItemCardSkeleton } from "./menu-item-card";
 import { ChevronDown } from "lucide-react";
@@ -87,21 +87,25 @@ interface MenuSectionsProps {
 }
 
 export function MenuSections({ items, loading, searchQuery }: MenuSectionsProps) {
-    // Filter items by search query
-    const filteredItems = searchQuery
-        ? items.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-        : items;
+    // Filter items by search query (memoized)
+    const filteredItems = useMemo(() => {
+        if (!searchQuery) return items;
+        const query = searchQuery.toLowerCase();
+        return items.filter(item => item.name.toLowerCase().includes(query));
+    }, [items, searchQuery]);
 
-    // Group items by category
-    const groupedItems = MENU_CATEGORIES.reduce((acc, cat) => {
-        acc[cat.value] = filteredItems.filter(item => item.category === cat.value);
-        return acc;
-    }, {} as Record<MenuCategory, MenuItem[]>);
+    // Group items by category (memoized)
+    const groupedItems = useMemo(() => {
+        return MENU_CATEGORIES.reduce((acc, cat) => {
+            acc[cat.value] = filteredItems.filter(item => item.category === cat.value);
+            return acc;
+        }, {} as Record<MenuCategory, MenuItem[]>);
+    }, [filteredItems]);
 
-    // Filter out empty categories
-    const nonEmptyCategories = MENU_CATEGORIES.filter(
-        cat => groupedItems[cat.value].length > 0
-    );
+    // Filter out empty categories (memoized)
+    const nonEmptyCategories = useMemo(() => {
+        return MENU_CATEGORIES.filter(cat => groupedItems[cat.value].length > 0);
+    }, [groupedItems]);
 
     if (loading) {
         return (

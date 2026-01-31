@@ -1,7 +1,6 @@
 
 "use client";
 import React, { useState, useMemo, useRef } from 'react';
-import { motion } from 'framer-motion';
 import { Order } from '@/types';
 import { useOrders } from '@/contexts/order-provider';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { EditCouponForm } from './edit-coupon-form';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Loader2 } from 'lucide-react';
 
 const MAX_COUPONS = 200;
 
@@ -29,6 +29,7 @@ interface CouponGridProps {
 interface CouponButtonProps {
   couponId: number;
   isActive: boolean;
+  isLoading: boolean;
   onClick: (id: number) => void;
   onMouseDown: (id: number) => void;
   onMouseUp: () => void;
@@ -37,9 +38,11 @@ interface CouponButtonProps {
   onTouchEnd: () => void;
 }
 
+// Optimized CouponButton with loading state
 const CouponButton = React.memo(({
   couponId,
   isActive,
+  isLoading,
   onClick,
   onMouseDown,
   onMouseUp,
@@ -48,31 +51,41 @@ const CouponButton = React.memo(({
   onTouchEnd
 }: CouponButtonProps) => {
   return (
-    <motion.div
-      initial={{ scale: 1 }}
-      animate={{ scale: isActive ? [1, 1.1, 1] : 1 }}
-      transition={{ duration: 0.3 }}
+    <Button
+      variant={isActive ? 'default' : 'outline'}
+      disabled={isLoading}
+      className={cn(
+        'w-full h-12 text-lg font-bold relative',
+        // Use CSS transitions for performance (respects prefers-reduced-motion)
+        'transition-all duration-200 ease-out motion-reduce:transition-none',
+        isLoading
+          ? 'opacity-70 cursor-wait'
+          : isActive
+            ? 'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 scale-100'
+            : 'bg-card text-card-foreground/70 hover:bg-muted scale-100',
+        !isLoading && 'hover:scale-105 active:scale-95'
+      )}
+      onClick={() => !isLoading && onClick(couponId)}
+      onMouseDown={() => !isLoading && onMouseDown(couponId)}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseLeave}
+      onTouchStart={() => !isLoading && onTouchStart(couponId)}
+      onTouchEnd={onTouchEnd}
     >
-      <Button
-        variant={isActive ? 'default' : 'outline'}
-        className={cn(
-          'w-full h-12 text-lg font-bold transition-all duration-300 ease-in-out transform',
-          isActive ? 'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90' : 'bg-card text-card-foreground/70 hover:bg-muted',
-          'hover:scale-105 active:scale-95'
-        )}
-        onClick={() => onClick(couponId)}
-        onMouseDown={() => onMouseDown(couponId)}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseLeave}
-        onTouchStart={() => onTouchStart(couponId)}
-        onTouchEnd={onTouchEnd}
-      >
-        {couponId}
-      </Button>
-    </motion.div>
+      {isLoading ? (
+        <Loader2 className="h-5 w-5 animate-spin" />
+      ) : (
+        couponId
+      )}
+    </Button>
   );
-}, (prev, next) => prev.isActive === next.isActive && prev.couponId === next.couponId);
-// Custom comparison: handlers are stable, only isActive and ID matter.
+}, (prev, next) =>
+  prev.isActive === next.isActive &&
+  prev.couponId === next.couponId &&
+  prev.isLoading === next.isLoading
+);
+
+CouponButton.displayName = 'CouponButton';
 
 export function CouponGrid({ orders }: CouponGridProps) {
   const { addOrder, deleteOrder, updateOrderCoupon, updateOrderStatus } = useOrders();
@@ -80,6 +93,9 @@ export function CouponGrid({ orders }: CouponGridProps) {
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+
+  // Track loading state for individual coupons
+  const [loadingCoupons, setLoadingCoupons] = useState<Set<number>>(new Set());
 
   const longPressTimer = useRef<NodeJS.Timeout>();
 
@@ -100,15 +116,42 @@ export function CouponGrid({ orders }: CouponGridProps) {
     activeOrdersMapRef.current = activeOrdersMap;
   }, [activeOrdersMap]);
 
-  // Stable Handlers
-  const handleButtonClick = React.useCallback((couponId: number) => {
+  // Helper to set loading state for a coupon
+  const setLoading = React.useCallback((couponId: number, loading: boolean) => {
+    setLoadingCoupons(prev => {
+      const next = new Set(prev);
+      if (loading) {
+        next.add(couponId);
+      } else {
+        next.delete(couponId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Stable Handlers with loading state
+  const handleButtonClick = React.useCallback(async (couponId: number) => {
     const order = activeOrdersMapRef.current.get(couponId);
-    if (order) {
-      updateOrderStatus(order.id, 'PICKED_UP');
-    } else {
-      addOrder(couponId.toString());
+
+    // Set loading state immediately for visual feedback
+    setLoading(couponId, true);
+
+    try {
+      if (order) {
+        await updateOrderStatus(order.id, 'PICKED_UP');
+      } else {
+        await addOrder(couponId.toString());
+      }
+    } catch (error) {
+      console.error('Error processing coupon action:', error);
+    } finally {
+      // Clear loading state after a short delay to ensure smooth transition
+      // The actual state change will come from the Firestore listener
+      setTimeout(() => {
+        setLoading(couponId, false);
+      }, 500);
     }
-  }, [addOrder, updateOrderStatus]);
+  }, [addOrder, updateOrderStatus, setLoading]);
 
   const handleMouseDown = React.useCallback((couponId: number) => {
     const order = activeOrdersMapRef.current.get(couponId);
@@ -140,24 +183,43 @@ export function CouponGrid({ orders }: CouponGridProps) {
     setIsDeleteConfirmOpen(true);
   };
 
-  const handleEditSubmit = (newCouponId: number) => {
+  const handleEditSubmit = async (newCouponId: number) => {
     if (selectedOrder) {
-      updateOrderCoupon(selectedOrder.id, newCouponId.toString());
+      const oldCouponId = parseInt(selectedOrder.studentId.split('-')[1]);
+      setLoading(oldCouponId, true);
+      setLoading(newCouponId, true);
+
+      try {
+        await updateOrderCoupon(selectedOrder.id, newCouponId.toString());
+      } finally {
+        setTimeout(() => {
+          setLoading(oldCouponId, false);
+          setLoading(newCouponId, false);
+        }, 500);
+      }
     }
     setIsEditModalOpen(false);
     setSelectedOrder(null);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (selectedOrder) {
-      deleteOrder(selectedOrder.id);
+      const couponId = parseInt(selectedOrder.studentId.split('-')[1]);
+      setLoading(couponId, true);
+
+      try {
+        await deleteOrder(selectedOrder.id);
+      } finally {
+        setTimeout(() => {
+          setLoading(couponId, false);
+        }, 500);
+      }
     }
     setIsDeleteConfirmOpen(false);
     setSelectedOrder(null);
   };
 
-  // Pre-calculate items rendering logic? No, map is fast.
-  // But we need to use the memoized keys from MAX_COUPONS
+  // Pre-calculate items rendering logic
   const couponIds = useMemo(() => [...Array(MAX_COUPONS)].map((_, i) => i + 1), []);
 
   return (
@@ -169,12 +231,14 @@ export function CouponGrid({ orders }: CouponGridProps) {
         <CardContent>
           <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-15 xl:grid-cols-20 gap-2">
             {couponIds.map((couponId) => {
-              const isActive = activeOrdersMap.has(couponId); // Fast O(1)
+              const isActive = activeOrdersMap.has(couponId);
+              const isLoading = loadingCoupons.has(couponId);
               return (
                 <CouponButton
                   key={couponId}
                   couponId={couponId}
                   isActive={isActive}
+                  isLoading={isLoading}
                   onClick={handleButtonClick}
                   onMouseDown={handleMouseDown}
                   onMouseUp={clearLongPressTimer}
@@ -241,3 +305,4 @@ export function CouponGrid({ orders }: CouponGridProps) {
     </>
   );
 }
+

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { signInWithGoogle, createStudentProfile, checkStudentProfileExists } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Search, ArrowLeft, Utensils, Coffee, Soup, Sandwich, Disc, CircleDot, ChefHat, UtensilsCrossed, Carrot, Spline } from "lucide-react";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useRouter } from "next/navigation";
 
 // Order-specific imports
@@ -55,6 +56,7 @@ function OrderContent() {
     const [name, setName] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const debouncedSearchQuery = useDebounce(searchQuery, 300); // Debounce search for performance
 
     // Profile checking
     const [checkingProfile, setCheckingProfile] = useState(true);
@@ -150,16 +152,22 @@ function OrderContent() {
         }
     }
 
-    // Filter items by search query
-    const filteredItems = menuItems.filter((item) =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Filter items by debounced search query (memoized for performance)
+    const filteredItems = useMemo(() => {
+        if (!debouncedSearchQuery) return [];
+        const query = debouncedSearchQuery.toLowerCase();
+        return menuItems.filter((item) =>
+            item.name.toLowerCase().includes(query)
+        );
+    }, [menuItems, debouncedSearchQuery]);
 
-    // Group items for category view
-    const groupedItems = MENU_CATEGORIES.reduce((acc, cat) => {
-        acc[cat.value] = menuItems.filter(item => item.category === cat.value && item.isActive);
-        return acc;
-    }, {} as Record<MenuCategory, MenuItem[]>);
+    // Group items for category view (memoized for performance)
+    const groupedItems = useMemo(() => {
+        return MENU_CATEGORIES.reduce((acc, cat) => {
+            acc[cat.value] = menuItems.filter(item => item.category === cat.value && item.isActive);
+            return acc;
+        }, {} as Record<MenuCategory, MenuItem[]>);
+    }, [menuItems]);
 
     // Loading state
     if (loading || checkingProfile) {
@@ -332,7 +340,7 @@ function OrderContent() {
                         {/* Content */}
                         {!menuLoading && !menuError && (
                             <>
-                                {searchQuery ? (
+                                {debouncedSearchQuery ? (
                                     /* Search Results View */
                                     <div className="space-y-4">
                                         <h2 className="text-lg font-semibold text-gray-900">

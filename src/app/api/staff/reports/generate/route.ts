@@ -1,41 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { BYPASS_AUTH } from '@/lib/auth';
+import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
     try {
+        // Rate limit by IP (5 report generations per minute - expensive operation)
+        const clientIP = getClientIP(request);
+        const { success: rateLimitOk, resetIn } = rateLimit(`generate-report:${clientIP}`, 5, 60000);
+        if (!rateLimitOk) {
+            return NextResponse.json(
+                { error: 'Too many requests. Please try again later.' },
+                {
+                    status: 429,
+                    headers: { 'Retry-After': Math.ceil(resetIn / 1000).toString() }
+                }
+            );
+        }
+
         const { date } = await request.json(); // Expected format: YYYY-MM-DD
 
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        // Input validation for date
+        if (!date || typeof date !== 'string') {
+            return NextResponse.json({ error: 'Date is required in YYYY-MM-DD format' }, { status: 400 });
         }
 
-        const idToken = authHeader.split('Bearer ')[1];
-        const decodedToken = await adminAuth.verifyIdToken(idToken);
-        const email = decodedToken.email;
-
-        if (!email) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        // Validate date format (YYYY-MM-DD)
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(date)) {
+            return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, { status: 400 });
         }
 
-        // Verify manager
-        const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
-        const allowlistSnap = await allowlistRef.get();
-        if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        // Validate it's a real date
+        const parsedDate = new Date(date);
+        if (isNaN(parsedDate.getTime())) {
+            return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
         }
 
-        // Aggregate orders for the date
-        // Query completed or picked up orders
+        // Skip authentication if in testing mode
+        if (!BYPASS_AUTH) {
+            const authHeader = request.headers.get('Authorization');
+            if (!authHeader?.startsWith('Bearer ')) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            }
+
+            const idToken = authHeader.split('Bearer ')[1];
+            const decodedToken = await adminAuth.verifyIdToken(idToken);
+            const email = decodedToken.email;
+
+            if (!email) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            }
+
+            // Verify manager
+            const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
+            const allowlistSnap = await allowlistRef.get();
+            if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
+                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            }
+        } else {
+            console.log("🔓 AUTH BYPASS: Skipping authentication in generate report route");
+        }
+
+        // FIX: Use dateKey field in query instead of fetching all orders (N+1 fix)
+        // Query only completed/picked up orders for the specific date
         const ordersSnapshot = await adminDb.collection('orders')
+            .where('dateKey', '==', date)
             .where('status', 'in', ['Completed', 'PICKED_UP'])
             .get();
-
-        const targetedDate = new Date(date);
-        targetedDate.setHours(0, 0, 0, 0);
-        const nextDay = new Date(targetedDate);
-        nextDay.setDate(nextDay.getDate() + 1);
 
         let totalOrders = 0;
         let totalRevenue = 0;
@@ -43,19 +76,15 @@ export async function POST(request: NextRequest) {
 
         ordersSnapshot.docs.forEach(doc => {
             const data = doc.data();
-            const createdAt = data.createdAt.toDate();
+            totalOrders++;
+            totalRevenue += data.totalPrice || 0;
 
-            if (createdAt >= targetedDate && createdAt < nextDay) {
-                totalOrders++;
-                totalRevenue += data.totalPrice || 0;
-
-                if (data.items && Array.isArray(data.items)) {
-                    data.items.forEach((item: any) => {
-                        const name = item.name || 'Unknown';
-                        const qty = item.quantity || 0;
-                        itemSummary[name] = (itemSummary[name] || 0) + qty;
-                    });
-                }
+            if (data.items && Array.isArray(data.items)) {
+                data.items.forEach((item: any) => {
+                    const name = item.name || 'Unknown';
+                    const qty = item.quantity || 0;
+                    itemSummary[name] = (itemSummary[name] || 0) + qty;
+                });
             }
         });
 
@@ -65,7 +94,7 @@ export async function POST(request: NextRequest) {
             totalRevenue,
             itemSummary,
             generatedAt: FieldValue.serverTimestamp(),
-            generatedBy: decodedToken.uid
+            generatedBy: BYPASS_AUTH ? 'test-user-123' : 'authenticated-user'
         };
 
         await adminDb.collection('daily_reports').doc(date).set(reportData);
@@ -77,3 +106,4 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
+

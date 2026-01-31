@@ -1,32 +1,57 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
+import { BYPASS_AUTH } from '@/lib/auth';
+import { rateLimit, getClientIP } from '@/lib/rate-limit';
 
 export async function DELETE(
     request: NextRequest,
     { params }: { params: Promise<{ orderId: string }> }
 ) {
     try {
+        // Rate limit by IP (10 deletes per minute)
+        const clientIP = getClientIP(request);
+        const { success: rateLimitOk, resetIn } = rateLimit(`delete-order:${clientIP}`, 10, 60000);
+        if (!rateLimitOk) {
+            return NextResponse.json(
+                { error: 'Too many requests. Please try again later.' },
+                {
+                    status: 429,
+                    headers: { 'Retry-After': Math.ceil(resetIn / 1000).toString() }
+                }
+            );
+        }
+
         const { orderId } = await params;
 
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        // Input validation
+        if (!orderId || typeof orderId !== 'string' || orderId.length > 100) {
+            return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
         }
 
-        const idToken = authHeader.split('Bearer ')[1];
-        const decodedToken = await adminAuth.verifyIdToken(idToken);
-        const email = decodedToken.email;
+        // Skip authentication if in testing mode
+        if (!BYPASS_AUTH) {
+            const authHeader = request.headers.get('Authorization');
+            if (!authHeader?.startsWith('Bearer ')) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            }
 
-        if (!email) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+            const idToken = authHeader.split('Bearer ')[1];
+            const decodedToken = await adminAuth.verifyIdToken(idToken);
+            const email = decodedToken.email;
 
-        // Verify Manager
-        const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
-        const allowlistSnap = await allowlistRef.get();
-        if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            if (!email) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            }
+
+            // Verify Manager
+            const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
+            const allowlistSnap = await allowlistRef.get();
+            if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
+                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            }
+        } else {
+            console.log("🔓 AUTH BYPASS: Skipping authentication in delete order route");
         }
 
         await adminDb.collection('orders').doc(orderId).delete();
@@ -37,3 +62,4 @@ export async function DELETE(
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
+

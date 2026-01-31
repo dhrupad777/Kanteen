@@ -4,6 +4,8 @@ import { createContext, useContext, useReducer, useEffect, ReactNode, useCallbac
 import { CartItem, MenuItem } from "@/types/menu-item";
 
 const CART_STORAGE_KEY = "kanteen-cart";
+const MAX_CART_ITEMS = 50; // Maximum number of items in cart
+const MAX_CART_SIZE_BYTES = 100 * 1024; // 100KB max cart size in localStorage
 
 // Cart state
 interface CartState {
@@ -44,6 +46,13 @@ function cartReducer(state: CartState, action: CartAction): CartState {
                     ),
                 };
             }
+
+            // Prevent cart from growing too large
+            if (state.items.length >= MAX_CART_ITEMS) {
+                console.warn(`Cart limit reached (${MAX_CART_ITEMS} items). Cannot add more items.`);
+                return state;
+            }
+
             return {
                 ...state,
                 items: [
@@ -135,18 +144,38 @@ export function CartProvider({ children }: { children: ReactNode }) {
         try {
             const stored = localStorage.getItem(CART_STORAGE_KEY);
             if (stored) {
+                // Check storage size limit
+                if (stored.length > MAX_CART_SIZE_BYTES) {
+                    console.warn('Cart data exceeds size limit, clearing...');
+                    localStorage.removeItem(CART_STORAGE_KEY);
+                    return { items: [], isHydrated: true };
+                }
+
                 const parsed = JSON.parse(stored);
                 if (Array.isArray(parsed)) {
-                    // Filter invalid items
-                    const validItems = parsed.filter((i: any) => typeof i.price === 'number' && !isNaN(i.price));
+                    // Filter invalid items and enforce limits
+                    const validItems = parsed
+                        .filter((i: any) =>
+                            typeof i.price === 'number' &&
+                            !isNaN(i.price) &&
+                            typeof i.itemId === 'string' &&
+                            typeof i.name === 'string' &&
+                            typeof i.qty === 'number'
+                        )
+                        .slice(0, MAX_CART_ITEMS); // Enforce item limit
+
                     if (validItems.length !== parsed.length) {
-                        console.warn(`Removed ${parsed.length - validItems.length} invalid items from cart`);
+                        console.warn(`Removed ${parsed.length - validItems.length} invalid/excess items from cart`);
                     }
                     return { items: validItems, isHydrated: true };
                 }
             }
         } catch (e) {
             console.warn("Failed to parse cart from localStorage", e);
+            // Clear corrupted data
+            try {
+                localStorage.removeItem(CART_STORAGE_KEY);
+            } catch { }
         }
         return { items: [], isHydrated: true };
     });

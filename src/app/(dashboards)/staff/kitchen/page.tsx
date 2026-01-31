@@ -60,7 +60,23 @@ export default function KitchenDashboardPage() {
         Ready: filteredOrders.filter(o => o.status === 'Ready'),
     };
 
+    const [loadingOrders, setLoadingOrders] = useState<Set<string>>(new Set());
+
+    // Helper to set loading state
+    const setOrderLoading = (orderId: string, isLoading: boolean) => {
+        setLoadingOrders(prev => {
+            const next = new Set(prev);
+            if (isLoading) {
+                next.add(orderId);
+            } else {
+                next.delete(orderId);
+            }
+            return next;
+        });
+    };
+
     async function handleStatusUpdate(orderId: string, newStatus: string) {
+        setOrderLoading(orderId, true);
         try {
             const token = await user?.getIdToken();
             if (!token) throw new Error("Authentication required");
@@ -89,12 +105,18 @@ export default function KitchenDashboardPage() {
                 description: error.message || "Failed to update order status",
                 variant: "destructive",
             });
+        } finally {
+            // Small buffer to prevent glitching
+            setTimeout(() => {
+                setOrderLoading(orderId, false);
+            }, 500);
         }
     }
 
     async function handleVerifyOtp(orderId: string) {
         if (!otpValue) return;
 
+        setOrderLoading(orderId, true);
         try {
             const token = await user?.getIdToken();
             if (!token) throw new Error("Authentication required");
@@ -125,6 +147,11 @@ export default function KitchenDashboardPage() {
                 description: error.message || "Failed to verify OTP",
                 variant: "destructive",
             });
+        } finally {
+            // Small buffer to prevent glitching
+            setTimeout(() => {
+                setOrderLoading(orderId, false);
+            }, 500);
         }
     }
 
@@ -231,10 +258,17 @@ export default function KitchenDashboardPage() {
                                                 {status === 'Preparing' && (
                                                     <Button
                                                         onClick={() => handleStatusUpdate(order.id, 'Ready')}
-                                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black h-12 rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-transform"
+                                                        disabled={loadingOrders.has(order.id)}
+                                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black h-12 rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-transform disabled:opacity-70 disabled:cursor-wait"
                                                     >
-                                                        <CheckCircle2 className="w-4 h-4 mr-2" />
-                                                        MARK READY
+                                                        {loadingOrders.has(order.id) ? (
+                                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                                        ) : (
+                                                            <>
+                                                                <CheckCircle2 className="w-4 h-4 mr-2" />
+                                                                MARK READY
+                                                            </>
+                                                        )}
                                                     </Button>
                                                 )}
                                                 {status === 'Ready' && (
@@ -252,13 +286,19 @@ export default function KitchenDashboardPage() {
                                                                 <div className="flex gap-2">
                                                                     <Button
                                                                         onClick={() => handleVerifyOtp(order.id)}
-                                                                        className="flex-grow bg-emerald-600 hover:bg-emerald-700 font-black"
+                                                                        disabled={loadingOrders.has(order.id)}
+                                                                        className="flex-grow bg-emerald-600 hover:bg-emerald-700 font-black disabled:opacity-70 disabled:cursor-wait"
                                                                     >
-                                                                        VERIFY
+                                                                        {loadingOrders.has(order.id) ? (
+                                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                                        ) : (
+                                                                            "VERIFY"
+                                                                        )}
                                                                     </Button>
                                                                     <Button
                                                                         variant="ghost"
                                                                         onClick={() => setVerifyingOtp(null)}
+                                                                        disabled={loadingOrders.has(order.id)}
                                                                         className="px-3"
                                                                     >
                                                                         X

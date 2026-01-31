@@ -3,14 +3,43 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { checkManagerAllowlist, BYPASS_AUTH } from '@/lib/auth';
 import { updateDailyReportOnCompletion } from '@/lib/reports-admin';
+import { rateLimit, getClientIP } from '@/lib/rate-limit';
+
+// Valid status values
+const VALID_STATUSES = ['PAID', 'Preparing', 'Ready', 'Completed', 'PICKED_UP', 'Cancelled'];
 
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ orderId: string }> }
 ) {
     try {
+        // Rate limit by IP (20 status updates per minute)
+        const clientIP = getClientIP(request);
+        const { success: rateLimitOk, resetIn } = rateLimit(`status-update:${clientIP}`, 20, 60000);
+        if (!rateLimitOk) {
+            return NextResponse.json(
+                { error: 'Too many requests. Please try again later.' },
+                {
+                    status: 429,
+                    headers: { 'Retry-After': Math.ceil(resetIn / 1000).toString() }
+                }
+            );
+        }
+
         const { orderId } = await params;
         const { status } = await request.json();
+
+        // Input validation
+        if (!orderId || typeof orderId !== 'string' || orderId.length > 100) {
+            return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
+        }
+
+        if (!status || typeof status !== 'string' || !VALID_STATUSES.includes(status)) {
+            return NextResponse.json(
+                { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
+                { status: 400 }
+            );
+        }
 
         let userId = 'test-user-123';
 
@@ -72,3 +101,4 @@ export async function POST(
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
+

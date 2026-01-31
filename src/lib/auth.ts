@@ -9,6 +9,23 @@ import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 // ============================================================
 export const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
 
+// CRITICAL: Production safety check
+if (BYPASS_AUTH) {
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error(
+            '🚨 CRITICAL SECURITY ERROR: BYPASS_AUTH is enabled in production! ' +
+            'This disables ALL authentication. Set NEXT_PUBLIC_BYPASS_AUTH=false immediately.'
+        );
+    }
+    // Prominent warning in development
+    console.warn('\n' + '='.repeat(60));
+    console.warn('⚠️  WARNING: AUTHENTICATION BYPASS IS ENABLED');
+    console.warn('   All authentication checks are disabled.');
+    console.warn('   This should NEVER be enabled in production!');
+    console.warn('   Set NEXT_PUBLIC_BYPASS_AUTH=false before deploying.');
+    console.warn('='.repeat(60) + '\n');
+}
+
 // Mock user for testing
 const MOCK_USER = {
     uid: "test-user-123",
