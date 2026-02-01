@@ -2,6 +2,19 @@
     "collection": "menu_items",
     "documents": [
         {
+            "docId": "test-item-1rs",
+            "data": {
+                "name": "Test Item (₹1)",
+                "price": 1,
+                "priceType": "fixed",
+                "category": "tea_beverage",
+                "tags": ["test"],
+                "isActive": true,
+                "isAvailable": true,
+                "sortOrder": 1
+            }
+        },
+        {
             "docId": "redbull-energy-drink",
             "data": {
                 "name": "RedBull Energy Drink",
