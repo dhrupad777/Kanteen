@@ -21,7 +21,17 @@ export function OrderCard({ order, role }: OrderCardProps) {
   const [showSummary, setShowSummary] = useState(false);
 
   const displayId = order.token ? order.token.toString() : (order.studentId.split('-')[1] || order.id);
-  const otp = order.secretOtp || (typeof window !== 'undefined' ? localStorage.getItem(`kanteen_otp_${order.id}`) : null);
+
+  // Get OTP from order or localStorage, filtering out invalid values like "undefined" string
+  const getOtp = () => {
+    if (order.secretOtp) return order.secretOtp;
+    if (typeof window === 'undefined') return null;
+    const storedOtp = localStorage.getItem(`kanteen_otp_${order.id}`);
+    // Filter out invalid stored values
+    if (!storedOtp || storedOtp === 'undefined' || storedOtp === 'null') return null;
+    return storedOtp;
+  };
+  const otp = getOtp();
 
   const handleStatusUpdate = () => {
     updateOrderStatus(order.id, 'Completed');

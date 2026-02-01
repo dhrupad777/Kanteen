@@ -24,8 +24,15 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
     const isOnlineOrder = order.token && order.token >= 201;
     const displayId = order.token ? order.token.toString() : (order.studentId.split('-')[1] || order.id);
 
-    // Get OTP from localStorage
-    const storedOtp = typeof window !== 'undefined' ? localStorage.getItem(`kanteen_otp_${order.id}`) : null;
+    // Get OTP from localStorage, filtering out invalid values
+    const getStoredOtp = () => {
+        if (typeof window === 'undefined') return null;
+        const otp = localStorage.getItem(`kanteen_otp_${order.id}`);
+        // Filter out invalid stored values like "undefined" or "null" strings
+        if (!otp || otp === 'undefined' || otp === 'null') return null;
+        return otp;
+    };
+    const storedOtp = getStoredOtp();
 
     const handleRegenerateOtp = async () => {
         if (!user) {

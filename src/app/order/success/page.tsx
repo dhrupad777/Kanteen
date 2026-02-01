@@ -20,7 +20,10 @@ function SuccessContent() {
 
         if (orderId) {
             const storedOtp = localStorage.getItem(`kanteen_otp_${orderId}`);
-            setOtp(storedOtp);
+            // Filter out invalid stored values
+            if (storedOtp && storedOtp !== 'undefined' && storedOtp !== 'null') {
+                setOtp(storedOtp);
+            }
         }
     }, [searchParams]);
 

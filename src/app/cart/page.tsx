@@ -22,7 +22,10 @@ export default function CartPage() {
     // Razorpay checkout
     const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
         onSuccess: (response) => {
-            localStorage.setItem(`kanteen_otp_${response.orderId}`, response.otp);
+            // Only store OTP if it exists (won't be present for already-processed orders)
+            if (response.otp) {
+                localStorage.setItem(`kanteen_otp_${response.orderId}`, response.otp);
+            }
             clearCart();
             toast({
                 title: "Order Placed Successfully!",
