@@ -1,5 +1,9 @@
 # Settings for Backend (on Cloud Run).
 # See https://firebase.google.com/docs/app-hosting/configure#cloud-run
+#
+# IMPORTANT: Copy this to apphosting.yaml and fill in your values.
+# NEVER commit apphosting.yaml to git - it contains secrets!
+
 runConfig:
   minInstances: 0
   maxInstances: 10
@@ -9,39 +13,39 @@ runConfig:
 
 # Environment variables and secrets.
 env:
-  # Firebase Configuration (public)
+  # Firebase Configuration (public - but regenerate after exposure)
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: AIzaSyAJeWxw_YF2ooBqxL7J0knpqatSeC2qXyE
+    value: YOUR_NEW_FIREBASE_API_KEY
     availability:
       - BUILD
       - RUNTIME
 
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: studio-1083756985-9d2c6.firebaseapp.com
+    value: YOUR_PROJECT_ID.firebaseapp.com
     availability:
       - BUILD
       - RUNTIME
 
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-    value: studio-1083756985-9d2c6
+    value: YOUR_PROJECT_ID
     availability:
       - BUILD
       - RUNTIME
 
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: studio-1083756985-9d2c6.firebasestorage.app
+    value: YOUR_PROJECT_ID.firebasestorage.app
     availability:
       - BUILD
       - RUNTIME
 
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-    value: "458047161848"
+    value: "YOUR_SENDER_ID"
     availability:
       - BUILD
       - RUNTIME
 
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
-    value: 1:458047161848:web:bf933fffca59e20f17c20d
+    value: YOUR_APP_ID
     availability:
       - BUILD
       - RUNTIME
@@ -53,26 +57,30 @@ env:
       - BUILD
       - RUNTIME
 
-  # Razorpay Public Key
+  # Razorpay Public Key (visible to browser - still regenerate after exposure)
   - variable: NEXT_PUBLIC_RAZORPAY_KEY_ID
-    value: rzp_live_SAc1p3xOybLPWa
+    value: rzp_live_YOUR_NEW_KEY
     availability:
       - BUILD
       - RUNTIME
 
-  # Razorpay Secret Keys (use Cloud Secret Manager for production)
-  # For now, using direct values - move to secrets later
+  # ============================================================
+  # SECRETS - Use Firebase App Hosting Secrets for these!
+  # Run: firebase apphosting:secrets:set RAZORPAY_KEY_SECRET
+  # ============================================================
+
   - variable: RAZORPAY_KEY_ID
-    value: rzp_live_SAc1p3xOybLPWa
+    value: rzp_live_YOUR_NEW_KEY
     availability:
       - RUNTIME
 
+  # CRITICAL: Use secrets manager instead of plain text!
+  # firebase apphosting:secrets:set RAZORPAY_KEY_SECRET
   - variable: RAZORPAY_KEY_SECRET
-    value: 0SuTUugY3y6t5555So36pszc
-    availability:
-      - RUNTIME
+    secret: RAZORPAY_KEY_SECRET
+    # value: NEVER_PUT_SECRET_HERE
 
+  # firebase apphosting:secrets:set RAZORPAY_WEBHOOK_SECRET
   - variable: RAZORPAY_WEBHOOK_SECRET
-    value: kanteen_prod_secret_123
-    availability:
-      - RUNTIME
+    secret: RAZORPAY_WEBHOOK_SECRET
+    # value: NEVER_PUT_SECRET_HERE

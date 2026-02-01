@@ -46,6 +46,8 @@ firebase-debug.log
 
 # Misc
 
-# Secrets
+# Secrets - NEVER commit these!
 firebase-service-account.json
 key.txt
+apphosting.yaml
+!apphosting.yaml.example
