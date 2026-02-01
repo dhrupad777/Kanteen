@@ -1,22 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
-import crypto from 'crypto';
+import { hashOTP, timingSafeEqual } from '@/lib/crypto-utils';
+import { validateTransition, getActorRoleFromToken } from '@/lib/order-state-machine';
+import { logAuditEvent, getClientIP, getUserAgent } from '@/lib/audit-logger';
 import { updateDailyReportTransaction } from '@/lib/reports-admin';
-import { rateLimit, getClientIP } from '@/lib/rate-limit';
+import { rateLimit } from '@/lib/rate-limit';
 
-async function hashOTP(otp: string): Promise<string> {
-    return crypto.createHash('sha256').update(otp).digest('hex');
-}
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_LOCKOUT_MINUTES = 10;
 
+/**
+ * Verify OTP for order pickup
+ * POST /api/staff/orders/{orderId}/verify-otp
+ * 
+ * Security measures:
+ * - Rate limiting by IP + orderId
+ * - OTP expiry check
+ * - Lockout after max attempts
+ * - Timing-safe hash comparison
+ * - State machine enforcement
+ * - Audit logging
+ */
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ orderId: string }> }
 ) {
+    const clientIP = getClientIP(request);
+    const userAgent = getUserAgent(request);
+
     try {
-        // Rate limit by IP (10 OTP verifications per minute)
-        const clientIP = getClientIP(request);
-        const { success: rateLimitOk, resetIn } = rateLimit(`verify-otp:${clientIP}`, 60, 60000);
+        const { orderId } = await params;
+        const { otp } = await request.json();
+
+        // ====== INPUT VALIDATION ======
+        if (!otp || typeof otp !== 'string') {
+            return NextResponse.json({ error: 'OTP is required' }, { status: 400 });
+        }
+        if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+            return NextResponse.json({ error: 'Invalid OTP format. Must be 6 digits.' }, { status: 400 });
+        }
+        if (!orderId || typeof orderId !== 'string' || orderId.length > 100) {
+            return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
+        }
+
+        // ====== RATE LIMITING: IP + ORDER ======
+        const rateLimitKey = `verify-otp:${orderId}:${clientIP}`;
+        const { success: rateLimitOk, resetIn } = rateLimit(rateLimitKey, 10, 60000);
         if (!rateLimitOk) {
             return NextResponse.json(
                 { error: 'Too many attempts. Please wait before trying again.' },
@@ -27,23 +57,7 @@ export async function POST(
             );
         }
 
-        const { orderId } = await params;
-        const { otp } = await request.json();
-
-        // Validate OTP input to prevent DoS via expensive hash on large inputs
-        if (!otp || typeof otp !== 'string') {
-            return NextResponse.json({ error: 'OTP is required' }, { status: 400 });
-        }
-        if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
-            return NextResponse.json({ error: 'Invalid OTP format. Must be 6 digits.' }, { status: 400 });
-        }
-
-        // Validate orderId
-        if (!orderId || typeof orderId !== 'string' || orderId.length > 100) {
-            return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
-        }
-
-        // Authenticate Request
+        // ====== AUTHENTICATE REQUEST ======
         const authHeader = request.headers.get('Authorization');
         if (!authHeader?.startsWith('Bearer ')) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -58,15 +72,23 @@ export async function POST(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Verify Manager Permissions
-        const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
-        const allowlistSnap = await allowlistRef.get();
-        if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
+        // ====== VERIFY MANAGER PERMISSIONS ======
+        // First check custom claims (RBAC)
+        const actorRole = getActorRoleFromToken(decodedToken);
+        let isAuthorized = actorRole === 'kitchen_staff' || actorRole === 'kitchen_manager' || actorRole === 'admin';
+
+        // Fallback to manager_allowlist for backward compatibility
+        if (!isAuthorized) {
+            const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
+            const allowlistSnap = await allowlistRef.get();
+            isAuthorized = allowlistSnap.exists && allowlistSnap.data()?.enabled === true;
+        }
+
+        if (!isAuthorized) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-
-        // 3. Run Atomic Transaction for Order + Report
+        // ====== RUN ATOMIC TRANSACTION ======
         const orderRef = adminDb.collection('orders').doc(orderId);
 
         await adminDb.runTransaction(async (transaction) => {
@@ -76,61 +98,139 @@ export async function POST(
                 throw new Error('ORDER_NOT_FOUND');
             }
 
-            const orderData = orderDoc.data();
+            const orderData = orderDoc.data()!;
 
-            // Check if already picked up
-            if (orderData?.status === 'PICKED_UP') {
+            // ====== STATE MACHINE: VALIDATE TRANSITION ======
+            const transitionResult = validateTransition(orderData.status, 'PICKED_UP', 'kitchen_staff');
+            if (!transitionResult.valid) {
+                await logAuditEvent({
+                    eventType: 'INVALID_TRANSITION',
+                    actorId: userId,
+                    actorRole,
+                    orderId,
+                    ip: clientIP,
+                    userAgent,
+                    details: { from: orderData.status, to: 'PICKED_UP', error: transitionResult.error },
+                });
+                throw new Error('INVALID_STATUS');
+            }
+
+            // ====== CHECK IF ALREADY PICKED UP ======
+            if (orderData.status === 'PICKED_UP') {
                 throw new Error('ALREADY_PICKED_UP');
             }
 
-            // Check attempts
-            const attempts = orderData?.otp?.attempts || 0;
-            if (attempts >= 5) {
+            // ====== CHECK OTP LOCKOUT ======
+            if (orderData.otpLockedUntil) {
+                const lockedUntil = orderData.otpLockedUntil.toDate ? orderData.otpLockedUntil.toDate() : new Date(orderData.otpLockedUntil);
+                if (new Date() < lockedUntil) {
+                    const remainingMs = lockedUntil.getTime() - Date.now();
+                    const remainingMins = Math.ceil(remainingMs / 60000);
+                    throw new Error(`OTP_LOCKED:${remainingMins}`);
+                }
+            }
+
+            // ====== CHECK OTP EXPIRY ======
+            if (orderData.otpExpiresAt) {
+                const expiresAt = orderData.otpExpiresAt.toDate ? orderData.otpExpiresAt.toDate() : new Date(orderData.otpExpiresAt);
+                if (new Date() > expiresAt) {
+                    throw new Error('OTP_EXPIRED');
+                }
+            }
+
+            // ====== CHECK ATTEMPT COUNT ======
+            const attempts = orderData.otpAttempts || 0;
+            if (attempts >= MAX_OTP_ATTEMPTS) {
+                // Lock the order for OTP verification
+                const lockUntil = new Date(Date.now() + OTP_LOCKOUT_MINUTES * 60 * 1000);
+                transaction.update(orderRef, {
+                    otpLockedUntil: lockUntil,
+                });
+                await logAuditEvent({
+                    eventType: 'OTP_LOCKED',
+                    actorId: userId,
+                    actorRole,
+                    orderId,
+                    ip: clientIP,
+                    userAgent,
+                    details: { attempts, lockUntil: lockUntil.toISOString() },
+                });
                 throw new Error('TOO_MANY_ATTEMPTS');
             }
 
-            // Use submitted OTP
-            const submittedHash = await hashOTP(otp);
+            // ====== VERIFY OTP WITH TIMING-SAFE COMPARISON ======
+            const submittedHash = hashOTP(otp, orderData.otpSalt);
+            const storedHash = orderData.otpHash;
 
-            if (submittedHash === orderData?.otpHash) {
-                // SUCCESS: Update Order AND Report together
-                // IMPORTANT: Must perform all READS before WRITES in a transaction.
-                // updateDailyReportTransaction performs a GET, so it must be called BEFORE we do any writes.
-                await updateDailyReportTransaction(transaction, { ...orderData, status: 'PICKED_UP' });
-
+            if (!timingSafeEqual(submittedHash, storedHash)) {
+                // Increment attempts
                 transaction.update(orderRef, {
-                    status: 'PICKED_UP',
-                    'otp.verifiedAt': FieldValue.serverTimestamp(),
-                    'kitchen.pickedUpAt': FieldValue.serverTimestamp(),
-                    'kitchen.updatedBy': userId
+                    otpAttempts: FieldValue.increment(1),
                 });
-
-            } else {
-                // FAILURE: Increment attempts
-                transaction.update(orderRef, {
-                    'otp.attempts': FieldValue.increment(1)
+                await logAuditEvent({
+                    eventType: 'OTP_FAILED',
+                    actorId: userId,
+                    actorRole,
+                    orderId,
+                    ip: clientIP,
+                    userAgent,
+                    details: { attempt: attempts + 1 },
                 });
                 throw new Error('INVALID_OTP');
             }
+
+            // ====== SUCCESS: UPDATE ORDER AND REPORT ======
+            // IMPORTANT: Must perform all READS before WRITES in a transaction.
+            await updateDailyReportTransaction(transaction, { ...orderData, status: 'PICKED_UP' });
+
+            transaction.update(orderRef, {
+                status: 'PICKED_UP',
+                'otp.verifiedAt': FieldValue.serverTimestamp(),
+                'kitchen.pickedUpAt': FieldValue.serverTimestamp(),
+                'kitchen.updatedBy': userId,
+                'audit.updatedAt': FieldValue.serverTimestamp(),
+                'audit.updatedBy': userId,
+            });
+
+            await logAuditEvent({
+                eventType: 'OTP_VERIFIED',
+                actorId: userId,
+                actorRole,
+                orderId,
+                ip: clientIP,
+                userAgent,
+                details: { token: orderData.token },
+            });
         });
 
         return NextResponse.json({ success: true });
 
     } catch (error: any) {
-        console.error('OTP verification error:', error);
+        console.error('OTP verification error:', error instanceof Error ? error.message : 'Unknown error');
 
-        switch (error.message) {
-            case 'ORDER_NOT_FOUND':
-                return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-            case 'ALREADY_PICKED_UP':
-                return NextResponse.json({ error: 'Order already picked up' }, { status: 400 });
-            case 'TOO_MANY_ATTEMPTS':
-                return NextResponse.json({ error: 'Too many attempts. Order locked.' }, { status: 429 });
-            case 'INVALID_OTP':
-                return NextResponse.json({ error: 'Invalid OTP' }, { status: 400 });
-            default:
-                // Include actual error message for debugging
-                return NextResponse.json({ error: `Internal server error: ${error.message}` }, { status: 500 });
+        // Handle locked error with remaining time
+        if (error.message?.startsWith('OTP_LOCKED:')) {
+            const remainingMins = error.message.split(':')[1];
+            return NextResponse.json(
+                { error: `Too many attempts. Try again in ${remainingMins} minute(s).` },
+                { status: 429 }
+            );
         }
+
+        const errorMessages: Record<string, { message: string; status: number }> = {
+            ORDER_NOT_FOUND: { message: 'Order not found', status: 404 },
+            ALREADY_PICKED_UP: { message: 'Order already picked up', status: 400 },
+            INVALID_STATUS: { message: 'Order is not ready for pickup', status: 400 },
+            TOO_MANY_ATTEMPTS: { message: 'Too many attempts. Order locked.', status: 429 },
+            INVALID_OTP: { message: 'Invalid OTP', status: 400 },
+            OTP_EXPIRED: { message: 'OTP has expired. Please ask customer to regenerate.', status: 400 },
+        };
+
+        const errorInfo = errorMessages[error.message];
+        if (errorInfo) {
+            return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
+        }
+
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

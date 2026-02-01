@@ -4,13 +4,38 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ============================================================
-    // PRODUCTION SECURITY RULES
+    // PRODUCTION SECURITY RULES WITH RBAC
     // ============================================================
 
-    function isManager() {
+    // ====== ROLE CHECKING FUNCTIONS ======
+    
+    // Check if user has specific role via custom claims
+    function hasRole(role) {
+      return request.auth != null 
+        && request.auth.token.role == role;
+    }
+
+    // Check if user is any kitchen staff (staff or manager)
+    function isKitchenStaff() {
+      return request.auth != null 
+        && (request.auth.token.role in ['kitchen_staff', 'kitchen_manager', 'admin']);
+    }
+
+    // Check if user is admin
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    // Legacy manager check (fallback for backward compatibility)
+    function isManagerLegacy() {
       return request.auth != null
         && request.auth.token.email != null
         && exists(/databases/$(database)/documents/manager_allowlist/$(request.auth.token.email.lower()));
+    }
+
+    // Combined manager check (RBAC + legacy fallback)
+    function isManager() {
+      return isKitchenStaff() || isManagerLegacy();
     }
 
     function isAuthenticated() {
@@ -21,69 +46,103 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    // Orders - Students can read their own, managers can read/update all
-    match /orders/{orderId} {
-      allow read: if isAuthenticated() && (resource.data.studentId == request.auth.uid || isManager());
-      allow create: if false; // Only via API routes (server-side)
-      allow update: if isManager(); // Kitchen staff updates
-      allow delete: if isManager();
+    // ====== FIELD RESTRICTION HELPERS ======
+    
+    // Check if only allowed fields are being modified
+    function onlyModifiesFields(allowedFields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
     }
 
-    // Order counters - Managers only
+    // ====== ORDERS COLLECTION ======
+    match /orders/{orderId} {
+      // Students can read their own orders, staff can read all
+      allow read: if isAuthenticated() 
+        && (resource.data.studentId == request.auth.uid || isManager());
+      
+      // Only server (Admin SDK) can create orders
+      allow create: if false;
+      
+      // Staff can only update specific fields
+      allow update: if isManager() 
+        && onlyModifiesFields(['status', 'kitchen', 'otp', 'audit']);
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+    }
+
+    // ====== ORDER COUNTERS ======
     match /order_counters/{date} {
       allow read: if isAuthenticated();
       allow write: if false; // Only via Admin SDK
     }
 
-    // Metadata - Managers only
+    // ====== WEBHOOK EVENTS (for deduplication) ======
+    match /webhook_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only via Admin SDK
+    }
+
+    // ====== AUDIT LOGS ======
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only via Admin SDK
+    }
+
+    // ====== PRINT JOBS ======
+    match /print_jobs/{jobId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only via Admin SDK
+    }
+
+    // ====== METADATA ======
     match /metadata/{docId} {
       allow read: if isManager();
       allow write: if isManager();
     }
 
-    // Student profiles - Owner only
+    // ====== STUDENT PROFILES ======
     match /students/{userId} {
       allow create, update, read: if isOwner(userId);
       allow delete, list: if false;
     }
 
-    // Users collection - Owner only
+    // ====== USER PROFILES ======
     match /users/{userId} {
       allow read, write: if isOwner(userId);
       allow delete, list: if false;
     }
 
-    // Manager allowlist - Read for auth check
+    // ====== MANAGER ALLOWLIST ======
     match /manager_allowlist/{email} {
       allow read: if isAuthenticated();
-      allow write: if false; // Only via Firebase Console
+      allow write: if false; // Only via Firebase Console or Admin SDK
     }
 
-    // Menu options - Public read, manager write
+    // ====== MENU OPTIONS ======
     match /menu_options/{category} {
       allow read: if true;
       allow write: if isManager();
     }
 
-    // Canteen state - Public read, manager write
+    // ====== CANTEEN STATE ======
     match /canteen_state/{docId} {
       allow read: if true;
       allow write: if isManager();
     }
 
-    // Menu items catalog - Public read for browsing
+    // ====== MENU ITEMS ======
     match /menu_items/{itemId} {
       allow read: if true;
       allow write: if isManager();
     }
 
-    // Manager profiles - Owner only
+    // ====== MANAGER PROFILES ======
     match /managers/{userId} {
       allow create, update, read: if isOwner(userId);
       allow delete, list: if false;
     }
 
-    // Daily reports - Manager read only
+    // ====== DAILY REPORTS ======
     match /daily_reports/{reportId} {
       allow read: if isManager();
       allow write: if false; // Only via Admin SDK

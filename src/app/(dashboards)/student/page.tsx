@@ -24,7 +24,10 @@ export default function StudentDashboardPage() {
 
   const loading = ordersLoading || authLoading;
 
-  const myActiveOrders = orders.filter(o => o.studentId === user?.uid && o.status !== 'PICKED_UP' && o.status !== 'Completed');
+  const myActiveOrders = orders.filter(o =>
+    o.studentId === user?.uid &&
+    ['Preparing', 'Ready'].includes(o.status)
+  );
   const publicReadyOrders = orders.filter(o => o.status === 'Ready' && (!o.token || o.token < 201) && o.studentId !== user?.uid);
 
   if (loading) {

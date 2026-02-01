@@ -16,7 +16,7 @@ const formSchema = z.object({
     .int()
     .positive("Coupon number must be a positive number.")
     .min(1, 'Coupon number must be at least 1.')
-    .max(300, 'Coupon number must be no more than 300.'),
+    .max(200, 'Coupon number must be no more than 200.'),
 });
 
 interface EditCouponFormProps {
@@ -47,13 +47,13 @@ export function EditCouponForm({ currentCoupon, onSubmit, onCancel }: EditCoupon
             <FormItem>
               <FormLabel>New Coupon Number</FormLabel>
               <FormControl>
-                <Input 
-                  type="number" 
+                <Input
+                  type="number"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  min="1" 
-                  max="300" 
-                  {...field} 
+                  min="1"
+                  max="200"
+                  {...field}
                 />
               </FormControl>
               <FormMessage />

@@ -1,7 +1,78 @@
-# Settings to manage and configure a Firebase App Hosting backend.
-# https://firebase.google.com/docs/app-hosting/configure
-
+# Settings for Backend (on Cloud Run).
+# See https://firebase.google.com/docs/app-hosting/configure#cloud-run
 runConfig:
-  # Increase this value if you'd like to automatically spin up
-  # more instances in response to increased traffic.
-  maxInstances: 1
+  minInstances: 0
+  maxInstances: 10
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+# Environment variables and secrets.
+env:
+  # Firebase Configuration (public)
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyAJeWxw_YF2ooBqxL7J0knpqatSeC2qXyE
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: studio-1083756985-9d2c6.firebaseapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: studio-1083756985-9d2c6
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: studio-1083756985-9d2c6.firebasestorage.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "458047161848"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:458047161848:web:bf933fffca59e20f17c20d
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Auth bypass (must be false in production!)
+  - variable: NEXT_PUBLIC_BYPASS_AUTH
+    value: "false"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Razorpay Public Key
+  - variable: NEXT_PUBLIC_RAZORPAY_KEY_ID
+    value: rzp_live_SAc1p3xOybLPWa
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Razorpay Secret Keys (use Cloud Secret Manager for production)
+  # For now, using direct values - move to secrets later
+  - variable: RAZORPAY_KEY_ID
+    value: rzp_live_SAc1p3xOybLPWa
+    availability:
+      - RUNTIME
+
+  - variable: RAZORPAY_KEY_SECRET
+    value: 0SuTUugY3y6t5555So36pszc
+    availability:
+      - RUNTIME
+
+  - variable: RAZORPAY_WEBHOOK_SECRET
+    value: kanteen_prod_secret_123
+    availability:
+      - RUNTIME

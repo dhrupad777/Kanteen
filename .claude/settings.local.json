@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(npm run typecheck:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npx firebase deploy:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: Improve OTP display for students\n\n- Show OTP prominently on success page after payment\n- Display OTP on order cards for both Preparing and Ready states\n- Add userEmail/userName to order provider mapping\n- Update env.example with comprehensive documentation\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(node scripts/test-order-flow.cjs:*)",
+      "Bash(node scripts/test-crypto-local.cjs:*)"
     ]
   }
 }

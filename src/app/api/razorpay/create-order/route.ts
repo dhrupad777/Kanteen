@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(response);
 
     } catch (error: any) {
-        console.error('Razorpay create-order error:', error);
+        console.error('Razorpay create-order error:', error instanceof Error ? error.message : 'Unknown error');
         return NextResponse.json(
             { error: error.message || 'Failed to create order' },
             { status: 500 }

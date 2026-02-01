@@ -16,7 +16,7 @@ export function MenuDisplay() {
         menu.main?.dal || menu.prepared?.dal,
         menu.main?.bread || menu.prepared?.bread,
         menu.main?.rice || menu.prepared?.rice,
-    ].filter(s => s?.trim().length > 0) as string[];
+    ].filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
 
     const snacks = (Array.isArray(menu.snacks) ? menu.snacks : []).filter(s => s?.trim().length > 0);
     const special = (Array.isArray(menu.special) ? menu.special : []).filter(s => s?.trim().length > 0);

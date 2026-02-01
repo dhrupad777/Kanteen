@@ -1,0 +1,317 @@
+Your STRIDE doc is solid. It’s the kind of thing an actual security review would accept as a “real” threat model: clear boundaries, explicit trust levels, concrete mitigations, and testable assertions.
+
+Two additions I’d make so it’s truly “audit-ready”:
+
+1. **Add the Printer Service as a semi-trusted boundary** (because it’s a real-world device + network hop + driver stack = higher risk than your API/DB).
+2. **Add explicit invariants** (things that must *always* be true) — these become your automated test assertions.
+
+Then, on your last line: **protecting bank info from malware on your computer** is a separate layer (endpoint security). You can’t design your app to fully protect against a compromised admin machine, but you *can* reduce blast radius massively.
+
+Below is a practical, detailed plan.
+
+---
+
+# A) Tighten the Threat Model (2 upgrades)
+
+## A1) Add invariants (these become test assertions)
+
+Put these right under “Attack Surface Summary”:
+
+**Payment invariants**
+
+* An order cannot be `Preparing/Ready/PICKED_UP` unless `payment.status == 'captured'`.
+* `payment.amount` and `order.amount` must match forever after confirmation.
+* One `razorpay_payment_id` maps to **one** order (no reuse).
+
+**Token invariants**
+
+* Token is unique per `{canteenId, YYYYMMDD}`.
+* Token is assigned **once** and never changes.
+
+**OTP invariants**
+
+* Only `otpHash + salt` exist in DB, never plaintext OTP.
+* OTP verification only allowed for `Ready → PICKED_UP`.
+* After 5 failures, verification must be locked for 10 minutes.
+
+**Printer invariants**
+
+* Exactly one print job per confirmed order (`print_jobs/{orderId}`).
+* Printer outages do not block the kitchen queue.
+* Reprints are explicit (manual) and audited.
+
+## A2) Printer boundary STRIDE addendum (small table)
+
+Because printers are a classic weak link:
+
+**Threats to include**
+
+* Print job tampering (wrong items/token)
+* Replay prints (duplicate tickets)
+* Printer service compromise (attacker prints fake “paid” tickets)
+* LAN sniffing of print payloads
+
+**Mitigations**
+
+* Outbox pattern + idempotent jobId = orderId
+* Payload hash stored in job; worker verifies hash before sending
+* Printer network segmentation (separate VLAN if possible)
+* Minimal print payload (no phone/email)
+
+---
+
+# B) “Break the rules” Sanity Check Plan (Firestore rules + API)
+
+## B1) What you build
+
+A dedicated repo folder:
+
+* `tests/security-rules/*.test.ts`
+* `tests/api/*.test.ts`
+* `firebase-emulator.json` config
+* `seed.ts` to create canteens, users, sample orders
+
+## B2) Attack personas (you already listed — perfect)
+
+Create auth contexts:
+
+* unauth
+* studentA / studentB
+* staffX / staffY (canteen scoped)
+* admin
+
+## B3) The most important “break attempts”
+
+These are the ones that *actually* find loopholes:
+
+### 1) Field masking / nested writes
+
+Try writing:
+
+* `orders/{id}` with merge updates that include forbidden nested fields
+  Examples:
+* `kitchen.updatedBy = "studentA"`
+* `payment.status = "captured"`
+* `otp.attempts = 0`
+
+**Goal:** prove your rules truly allowlist only the exact paths you intended.
+
+### 2) Create-order smuggling
+
+Students try to create an order with:
+
+* `status: "Ready"`
+* `token: 1`
+* `payment.status: "captured"`
+* `otpHash: "..."`
+  **Rules must force**:
+* status starts as pending
+* no token/payment/otp fields on create
+
+### 3) Cross-canteen leakage
+
+StaffX tries:
+
+* direct doc read `orders/{id}` from canteenY
+* query `orders where canteenId != X`
+  Rules must reject.
+
+### 4) Direct audit log write
+
+Client tries to create `audit_logs/*`.
+Must always fail.
+
+### 5) Printer jobs tampering
+
+If `print_jobs` is client-readable:
+
+* students/staff should **not** be able to write it
+* ideally only admin can read, nobody writes (server only)
+
+---
+
+# C) Load + Concurrency Testing Plan (busy hour)
+
+This is where systems break in real life. You’ll test **correctness under contention**.
+
+## C1) What you measure (the “must never happen” list)
+
+* Duplicate tokens
+* Order confirmed twice
+* Print job created twice
+* “Paid but missing from kitchen queue”
+* “Kitchen sees unpaid order”
+* Token gaps are fine; duplicates are not
+
+## C2) Scenario suite (run in staging)
+
+### Scenario 1: 2 people order at same time (micro)
+
+* 2 concurrent `verify-payment` calls for 2 different orders
+  Expected:
+* tokens t and t+1, unique
+
+### Scenario 2: 50 simultaneous payments (real burst)
+
+* 50 orders created in 2 seconds
+* 50 confirmations in 10 seconds
+  Expected:
+* 50 unique tokens
+* 50 print_jobs (exactly one per order)
+* all appear in kitchen “Preparing”
+
+### Scenario 3: Webhook + verify-payment race (same order)
+
+Send:
+
+* webhook event + verify-payment call within ~50–200ms
+  Expected:
+* one path processes, other no-ops
+* single token
+* single print_job
+
+### Scenario 4: Printer outage
+
+* Disable printer service for 10 minutes
+* Keep confirming orders (e.g., 100)
+  Expected:
+* orders still go to kitchen
+* print_jobs pile up as queued
+* on recovery, worker drains queue without duplicates
+
+### Scenario 5: Kitchen backlog + status churn
+
+* 200 orders confirmed
+* staff marks ready in parallel (2–5 staff devices)
+  Expected:
+* no invalid transitions
+* no “picked_up” without OTP verification
+
+## C3) How to run load
+
+* Use **k6** or **Artillery** against staging endpoints
+* Log:
+
+  * p50/p95 latency
+  * error rate
+  * Firestore transaction retries
+  * token collisions (should be 0)
+  * job duplicates (should be 0)
+
+## C4) Token allocation correctness (implementation pattern)
+
+Best pattern (for “2 people same time”):
+
+* Counter doc per canteen per day: `counters/{canteenId_YYYYMMDD}`
+* Transaction:
+
+  * increment counter
+  * set `order.token`
+  * create `print_jobs/{orderId}` (same transaction)
+    Optional “paranoid mode”:
+* create `token_registry/{canteenId_YYYYMMDD_token}` inside transaction to make duplicates impossible even under weird retries.
+
+---
+
+# D) Printer Queue Management (industry-grade pattern)
+
+Implement **Outbox + Worker + Idempotency + DLQ**.
+
+## D1) Data model
+
+`print_jobs/{orderId}`:
+
+* `orderId`
+* `canteenId`
+* `status: queued|printing|printed|failed|dead_letter`
+* `attempts`
+* `nextAttemptAt`
+* `payload` (token + items + special instructions)
+* `payloadHash`
+* `createdAt`, `printedAt`
+* `lastError`
+
+## D2) Exactly-once behavior
+
+* `jobId = orderId` ensures duplicates can’t exist
+* Worker processes jobs with a “claim” transaction:
+
+  * if status == queued and now >= nextAttemptAt → set status=printing
+* After successful print → status=printed
+* On failure → status=failed, attempts++, nextAttemptAt with exponential backoff
+* After N failures → dead_letter + alert
+
+## D3) Don’t block kitchen
+
+Printing is a *side-effect*. Your system should behave like:
+
+* Payment confirmed → kitchen can cook immediately
+* Printing happens ASAP but can lag without breaking flow
+
+---
+
+# E) About viruses stealing bank info from your computer
+
+This is endpoint security. No web app hardening can guarantee safety if the device you use for banking is compromised.
+
+What you *can* do is reduce risk sharply:
+
+## E1) The “serious” setup (recommended)
+
+* **Use a dedicated browser profile (or separate user account) for banking only**
+
+  * no extensions
+  * no saved passwords except via a trusted password manager
+* **Enable 2FA everywhere** (bank, email, password manager)
+* **Use a password manager** (unique passwords, no reuse)
+* **Turn on OS full-disk encryption** (BitLocker on Windows)
+* **Keep Windows + browser updated** (auto updates ON)
+
+## E2) High-impact anti-malware steps (Windows)
+
+* Windows Security (Defender) ON
+* Enable:
+
+  * **Tamper Protection**
+  * **SmartScreen**
+  * **Controlled folder access** (helps vs ransomware)
+* Weekly:
+
+  * Full scan
+* Avoid:
+
+  * cracked software
+  * unknown USB drives
+  * random “free” utilities
+
+## E3) Banking-specific “blast radius” reduction
+
+* Use bank apps / UPI apps on phone for payments instead of PC wherever possible
+* Turn on:
+
+  * transaction alerts (SMS/email/app)
+  * low transfer limits unless needed
+* Never store bank PDFs / KYC docs in open folders; keep in encrypted vault
+
+## E4) If you suspect compromise
+
+* Stop banking on that machine immediately
+* Change passwords from a clean device
+* Revoke sessions (Google/Microsoft accounts)
+* Fresh OS reinstall if you want certainty (malware can survive “cleanup”)
+
+---
+
+## If you want, I can turn this into a runnable test kit structure
+
+If you paste:
+
+1. your Firestore rules (`firestore.rules`)
+2. your order + print job document schemas
+3. whether printer service is **LAN printer**, **USB attached**, or **Windows print server**
+
+…I’ll give you:
+
+* a complete rules-test suite outline (with exact test cases)
+* a k6 load-test script outline for the 5 scenarios
+* the exact print_jobs worker logic (claim/retry/DLQ) tailored to your printer setup.

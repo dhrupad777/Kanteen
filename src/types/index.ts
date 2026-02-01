@@ -1,6 +1,6 @@
 
 
-export type OrderStatus = 'pending' | 'PAID' | 'Preparing' | 'Ready' | 'Completed' | 'Archived' | 'PICKED_UP';
+export type OrderStatus = 'pending' | 'PAID' | 'Preparing' | 'Ready' | 'Completed' | 'Archived' | 'PICKED_UP' | 'EXPIRED' | 'CANCELLED';
 
 
 export interface Order {
@@ -12,6 +12,7 @@ export interface Order {
   platformCharges?: number;
   token: number;
   otpHash: string;
+  secretOtp?: string; // Plaintext OTP for display
   userEmail?: string;
   userName?: string;
   otp?: {

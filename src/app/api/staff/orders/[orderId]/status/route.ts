@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { validateTransition, getActorRoleFromToken, OrderStatus } from '@/lib/order-state-machine';
+import { logAuditEvent, getClientIP, getUserAgent } from '@/lib/audit-logger';
 import { updateDailyReportOnCompletion } from '@/lib/reports-admin';
-import { rateLimit, getClientIP } from '@/lib/rate-limit';
+import { rateLimit } from '@/lib/rate-limit';
 
-// Valid status values
-const VALID_STATUSES = ['PAID', 'Preparing', 'Ready', 'Completed', 'PICKED_UP', 'Cancelled'];
-
+/**
+ * Update order status
+ * POST /api/staff/orders/{orderId}/status
+ * 
+ * Security measures:
+ * - State machine enforcement
+ * - RBAC with fallback to manager_allowlist
+ * - Audit logging
+ */
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ orderId: string }> }
 ) {
+    const clientIP = getClientIP(request);
+    const userAgent = getUserAgent(request);
+
     try {
         // Rate limit by IP (20 status updates per minute)
-        const clientIP = getClientIP(request);
         const { success: rateLimitOk, resetIn } = rateLimit(`status-update:${clientIP}`, 20, 60000);
         if (!rateLimitOk) {
             return NextResponse.json(
@@ -33,14 +43,11 @@ export async function POST(
             return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
         }
 
-        if (!status || typeof status !== 'string' || !VALID_STATUSES.includes(status)) {
-            return NextResponse.json(
-                { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
-                { status: 400 }
-            );
+        if (!status || typeof status !== 'string') {
+            return NextResponse.json({ error: 'Status is required' }, { status: 400 });
         }
 
-        // Authenticate Request
+        // ====== AUTHENTICATE REQUEST ======
         const authHeader = request.headers.get('Authorization');
         if (!authHeader?.startsWith('Bearer ')) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -55,43 +62,106 @@ export async function POST(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Verify if the user is a manager (server-side check)
-        const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
-        const allowlistSnap = await allowlistRef.get();
-        if (!allowlistSnap.exists || allowlistSnap.data()?.enabled !== true) {
+        // ====== CHECK AUTHORIZATION ======
+        // First check custom claims (RBAC)
+        const actorRole = getActorRoleFromToken(decodedToken);
+        let isAuthorized = actorRole === 'kitchen_staff' || actorRole === 'kitchen_manager' || actorRole === 'admin';
+
+        // Fallback to manager_allowlist for backward compatibility
+        if (!isAuthorized) {
+            const allowlistRef = adminDb.collection('manager_allowlist').doc(email.toLowerCase());
+            const allowlistSnap = await allowlistRef.get();
+            isAuthorized = allowlistSnap.exists && allowlistSnap.data()?.enabled === true;
+        }
+
+        if (!isAuthorized) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        const updateData: any = {
+        // ====== GET ORDER AND VALIDATE TRANSITION ======
+        const orderRef = adminDb.collection('orders').doc(orderId);
+        const orderSnap = await orderRef.get();
+
+        if (!orderSnap.exists) {
+            return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+        }
+
+        const orderData = orderSnap.data()!;
+        const currentStatus = orderData.status as OrderStatus;
+
+        // ====== STATE MACHINE ENFORCEMENT ======
+        const transitionResult = validateTransition(currentStatus, status as OrderStatus, 'kitchen_staff');
+
+        if (!transitionResult.valid) {
+            await logAuditEvent({
+                eventType: 'INVALID_TRANSITION',
+                actorId: userId,
+                actorRole,
+                orderId,
+                ip: clientIP,
+                userAgent,
+                details: {
+                    from: currentStatus,
+                    to: status,
+                    error: transitionResult.error,
+                },
+            });
+            return NextResponse.json(
+                { error: transitionResult.error || `Cannot transition from ${currentStatus} to ${status}` },
+                { status: 400 }
+            );
+        }
+
+        // ====== SPECIAL CASE: PICKED_UP REQUIRES OTP ======
+        if (transitionResult.requiresOtp) {
+            return NextResponse.json(
+                { error: 'This transition requires OTP verification. Use the verify-otp endpoint.' },
+                { status: 400 }
+            );
+        }
+
+        // ====== BUILD UPDATE DATA ======
+        const updateData: Record<string, any> = {
             status,
-            'kitchen.updatedBy': userId
+            'kitchen.updatedBy': userId,
+            'audit.updatedAt': FieldValue.serverTimestamp(),
+            'audit.updatedBy': userId,
         };
 
         if (status === 'Preparing') {
             updateData['kitchen.markedPreparingAt'] = FieldValue.serverTimestamp();
+            updateData['kitchen.markedPreparingBy'] = userId;
         } else if (status === 'Ready') {
             updateData['kitchen.readyAt'] = FieldValue.serverTimestamp();
+            updateData['kitchen.markedReadyBy'] = userId;
         }
-
-        const orderRef = adminDb.collection('orders').doc(orderId);
-        const orderSnap = await orderRef.get();
-        if (!orderSnap.exists) {
-            return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-        }
-        const orderData = orderSnap.data();
 
         await orderRef.update(updateData);
 
+        // ====== LOG AUDIT EVENT ======
+        await logAuditEvent({
+            eventType: 'STATUS_CHANGED',
+            actorId: userId,
+            actorRole,
+            orderId,
+            ip: clientIP,
+            userAgent,
+            details: {
+                from: currentStatus,
+                to: status,
+                token: orderData.token,
+            },
+        });
+
         // If newly completed, update the daily report
-        if (status === 'Completed' && orderData?.status !== 'Completed') {
+        if (status === 'Completed' && orderData.status !== 'Completed') {
             await updateDailyReportOnCompletion({ ...orderData, status: 'Completed' });
         }
 
         return NextResponse.json({ success: true });
 
     } catch (error: any) {
-        console.error('Status update error:', error);
+        console.error('Status update error:', error instanceof Error ? error.message : 'Unknown error');
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
-

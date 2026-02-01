@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  typescript: { ignoreBuildErrors: true },
+  typescript: { ignoreBuildErrors: false },
   // Prevent firebase-admin from being bundled - it needs to run as-is in Node.js
   serverExternalPackages: ['firebase-admin'],
   images: {
@@ -21,6 +21,7 @@ const nextConfig: NextConfig = {
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
         ],
       },
     ];

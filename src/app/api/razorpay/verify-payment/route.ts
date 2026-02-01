@@ -1,55 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
-import crypto from 'crypto';
+import Razorpay from 'razorpay';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
+import { verifyRazorpaySignature, generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
+import { logAuditEvent, getUserAgent } from '@/lib/audit-logger';
+import { enqueuePrintJobTransaction } from '@/lib/print-queue';
 import type { VerifyPaymentRequest, VerifyPaymentResponse } from '@/types';
 
 const CAMPUS_ID = 'default';
-
-/**
- * Hash OTP using SHA-256
- */
-function hashOTP(otp: string): string {
-    return crypto.createHash('sha256').update(otp).digest('hex');
-}
-
-/**
- * Generate 6-digit OTP
- */
-function generateOTP(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-/**
- * Verify Razorpay payment signature
- */
-function verifyRazorpaySignature(
-    orderId: string,
-    paymentId: string,
-    signature: string,
-    secret: string
-): boolean {
-    const body = orderId + '|' + paymentId;
-    const expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(body)
-        .digest('hex');
-    return expectedSignature === signature;
-}
+const OTP_EXPIRY_MINUTES = 30;
 
 /**
  * Verifies Razorpay payment and finalizes order
  * POST /api/razorpay/verify-payment
+ * 
+ * Security measures:
+ * - Timing-safe signature verification
+ * - Fetches payment from Razorpay to verify amount/currency/status
+ * - OTP with expiry and salted hash
+ * - Atomic transaction for token allocation
+ * - Audit logging
  */
 export async function POST(request: NextRequest) {
+    const clientIP = getClientIP(request);
+    const userAgent = getUserAgent(request);
+
     try {
         // Get Firebase instances (lazy initialization)
         const db = getAdminDb();
         const auth = getAdminAuth();
 
         // Rate limit
-        const clientIP = getClientIP(request);
         const { success: rateLimitOk, resetIn } = rateLimit(`razorpay-verify:${clientIP}`, 10, 60000);
         if (!rateLimitOk) {
             return NextResponse.json(
@@ -79,17 +61,18 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        // Check Razorpay secret
+        // Check Razorpay credentials
+        const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
         const razorpaySecret = process.env.RAZORPAY_KEY_SECRET;
-        if (!razorpaySecret) {
-            console.error('Razorpay secret not configured');
+        if (!razorpayKeyId || !razorpaySecret) {
+            console.error('Razorpay credentials not configured');
             return NextResponse.json(
                 { error: 'Payment service not configured. Please contact support.' },
                 { status: 503 }
             );
         }
 
-        // Verify signature
+        // ====== STEP 1: TIMING-SAFE SIGNATURE VERIFICATION ======
         const isValidSignature = verifyRazorpaySignature(
             razorpay_order_id,
             razorpay_payment_id,
@@ -98,11 +81,71 @@ export async function POST(request: NextRequest) {
         );
 
         if (!isValidSignature) {
-            console.error('Invalid Razorpay signature for order:', orderId);
+            await logAuditEvent({
+                eventType: 'SIGNATURE_INVALID',
+                actorId: uid,
+                orderId,
+                ip: clientIP,
+                userAgent,
+                details: { razorpay_order_id, razorpay_payment_id },
+            });
             return NextResponse.json({ error: 'Invalid payment signature' }, { status: 400 });
         }
 
-        // ====== FINALIZE ORDER IN TRANSACTION ======
+        // ====== STEP 2: FETCH PAYMENT FROM RAZORPAY TO VERIFY AMOUNT/CURRENCY/STATUS ======
+        const razorpay = new Razorpay({
+            key_id: razorpayKeyId,
+            key_secret: razorpaySecret,
+        });
+
+        let payment: any;
+        try {
+            payment = await razorpay.payments.fetch(razorpay_payment_id);
+        } catch (fetchError) {
+            console.error('Failed to fetch payment from Razorpay:', fetchError instanceof Error ? fetchError.message : 'Unknown error');
+            return NextResponse.json({ error: 'Failed to verify payment with gateway' }, { status: 502 });
+        }
+
+        // Verify payment belongs to the correct Razorpay order
+        if (payment.order_id !== razorpay_order_id) {
+            await logAuditEvent({
+                eventType: 'PAYMENT_FAILED',
+                actorId: uid,
+                orderId,
+                ip: clientIP,
+                userAgent,
+                details: { error: 'ORDER_ID_MISMATCH', expected: razorpay_order_id, actual: payment.order_id },
+            });
+            return NextResponse.json({ error: 'Payment order mismatch' }, { status: 400 });
+        }
+
+        // Verify payment status is captured
+        if (payment.status !== 'captured') {
+            await logAuditEvent({
+                eventType: 'PAYMENT_FAILED',
+                actorId: uid,
+                orderId,
+                ip: clientIP,
+                userAgent,
+                details: { error: 'PAYMENT_NOT_CAPTURED', status: payment.status },
+            });
+            return NextResponse.json({ error: 'Payment not captured' }, { status: 400 });
+        }
+
+        // Verify currency
+        if (payment.currency !== 'INR') {
+            await logAuditEvent({
+                eventType: 'PAYMENT_FAILED',
+                actorId: uid,
+                orderId,
+                ip: clientIP,
+                userAgent,
+                details: { error: 'CURRENCY_MISMATCH', currency: payment.currency },
+            });
+            return NextResponse.json({ error: 'Invalid currency' }, { status: 400 });
+        }
+
+        // ====== STEP 3: FINALIZE ORDER IN TRANSACTION ======
         const now = new Date();
         const dateKey = now.toISOString().split('T')[0];
         const counterRef = db.collection('order_counters').doc(`${CAMPUS_ID}_${dateKey}`);
@@ -125,6 +168,12 @@ export async function POST(request: NextRequest) {
             // Verify Razorpay order ID matches
             if (orderData.payment?.razorpayOrderId !== razorpay_order_id) {
                 throw new Error('ORDER_MISMATCH');
+            }
+
+            // ====== VERIFY AMOUNT MATCHES ======
+            const expectedAmountPaise = Math.round(orderData.totalPrice * 100);
+            if (payment.amount !== expectedAmountPaise) {
+                throw new Error('AMOUNT_MISMATCH');
             }
 
             // Check if already paid (idempotent)
@@ -163,9 +212,11 @@ export async function POST(request: NextRequest) {
                 updatedAt: FieldValue.serverTimestamp(),
             }, { merge: true });
 
-            // ====== GENERATE OTP ======
-            const otp = generateOTP();
-            const otpHash = hashOTP(otp);
+            // ====== GENERATE SECURE OTP WITH EXPIRY ======
+            const otp = generateSecureOTP();
+            const otpSalt = generateOTPSalt();
+            const otpHash = hashOTP(otp, otpSalt);
+            const otpExpiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
             // ====== UPDATE ORDER ======
             transaction.update(orderRef, {
@@ -174,11 +225,26 @@ export async function POST(request: NextRequest) {
                 'payment.razorpayPaymentId': razorpay_payment_id,
                 'payment.razorpaySignature': razorpay_signature,
                 'payment.paidAt': FieldValue.serverTimestamp(),
+                'payment.amount': payment.amount,
+                'payment.currency': payment.currency,
                 token: nextToken,
                 otpHash: otpHash,
+                otpSalt: otpSalt,
+                otpExpiresAt: otpExpiresAt,
+                otpAttempts: 0,
                 dateKey: dateKey,
                 'audit.updatedAt': FieldValue.serverTimestamp(),
                 'audit.updatedBy': uid,
+            });
+
+            // ====== ENQUEUE PRINT JOB (ATOMIC WITH ORDER CONFIRMATION) ======
+            enqueuePrintJobTransaction(transaction, orderId, {
+                orderId,
+                token: nextToken,
+                items: orderData.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
+                studentName: orderData.userName || undefined,
+                isParcel: orderData.isParcel || false,
+                createdAt: now.toISOString(),
             });
 
             return {
@@ -199,6 +265,20 @@ export async function POST(request: NextRequest) {
             });
         }
 
+        // Log successful payment verification
+        await logAuditEvent({
+            eventType: 'PAYMENT_VERIFIED',
+            actorId: uid,
+            orderId: result.orderId,
+            ip: clientIP,
+            userAgent,
+            details: {
+                token: result.token,
+                amount: payment.amount,
+                razorpay_payment_id,
+            },
+        });
+
         const response: VerifyPaymentResponse = {
             success: true,
             orderId: result.orderId,
@@ -209,12 +289,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(response);
 
     } catch (error: any) {
-        console.error('Razorpay verify-payment error:', error);
+        console.error('Razorpay verify-payment error:', error instanceof Error ? error.message : 'Unknown error');
+
+        // Log amount mismatch specifically
+        if (error.message === 'AMOUNT_MISMATCH') {
+            await logAuditEvent({
+                eventType: 'AMOUNT_MISMATCH',
+                actorId: 'unknown',
+                ip: clientIP,
+                userAgent,
+                details: { error: error.message },
+            });
+        }
 
         const errorMessages: Record<string, { message: string; status: number }> = {
             ORDER_NOT_FOUND: { message: 'Order not found', status: 404 },
             UNAUTHORIZED: { message: 'Unauthorized', status: 403 },
             ORDER_MISMATCH: { message: 'Order mismatch', status: 400 },
+            AMOUNT_MISMATCH: { message: 'Payment amount mismatch', status: 400 },
             INVALID_ORDER_STATUS: { message: 'Order cannot be processed', status: 400 },
             ONLINE_ORDERS_FULL: { message: 'Online orders are full for today', status: 429 },
         };
