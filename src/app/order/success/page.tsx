@@ -57,9 +57,25 @@ function SuccessContent() {
                     </div>
                 </div>
 
+                {/* OTP Box - Critical for pickup verification */}
+                {otp && (
+                    <div className="bg-green-50 rounded-2xl p-6 border border-green-200 shadow-inner">
+                        <div className="flex items-center justify-center gap-2 text-green-700 mb-2">
+                            <Key className="w-5 h-5" />
+                            <span className="text-xs font-black uppercase tracking-widest">Pickup OTP</span>
+                        </div>
+                        <div className="text-5xl font-black text-green-700 tracking-widest font-mono">
+                            {otp}
+                        </div>
+                        <p className="text-xs text-green-600 mt-3 font-medium">
+                            Show this OTP when collecting your order
+                        </p>
+                    </div>
+                )}
+
                 <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50">
                     <p className="text-sm font-bold text-blue-700">
-                        Track your order progress and find your pickup OTP on your student dashboard.
+                        Your order is being prepared. You can track progress on your dashboard.
                     </p>
                 </div>
             </div>

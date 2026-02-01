@@ -76,6 +76,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
             createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
             dateKey: data.dateKey,
             kitchen: data.kitchen,
+            userEmail: data.userEmail,
+            userName: data.userName,
           });
         }
       });
