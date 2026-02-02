@@ -72,6 +72,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
             status: data.status,
             token: data.token,
             otpHash: data.otpHash,
+            secretOtp: data.secretOtp, // OTP for display when order is Ready
             totalPrice: data.totalPrice,
             createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
             dateKey: data.dateKey,
@@ -102,11 +103,11 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false); // Ensure loading is set to false even on error
       }));
     } else {
-      // 2. STUDENT/PUBLIC: Ready offline coupons (Tokens 1-200)
+      // 2. STUDENT/PUBLIC: All Ready orders (filtered client-side for offline coupons)
+      // Note: Fetches all Ready orders to avoid composite index requirement on (status, token)
       const qPublic = query(
         collection(db, "orders"),
         where("status", "==", "Ready"),
-        where("token", "<", 201),
         limit(200)
       );
       listeners.push(onSnapshot(qPublic, updateOrdersFromSnapshot, (err) => {
