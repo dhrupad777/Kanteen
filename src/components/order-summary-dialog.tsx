@@ -24,15 +24,15 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
     const isOnlineOrder = order.token && order.token >= 201;
     const displayId = order.token ? order.token.toString() : (order.studentId.split('-')[1] || order.id);
 
-    // Get OTP from localStorage, filtering out invalid values
-    const getStoredOtp = () => {
+    // Get OTP from order (generated when marked Ready) or fall back to localStorage
+    const getOtp = () => {
+        if (order.secretOtp) return order.secretOtp;
         if (typeof window === 'undefined') return null;
         const otp = localStorage.getItem(`kanteen_otp_${order.id}`);
-        // Filter out invalid stored values like "undefined" or "null" strings
         if (!otp || otp === 'undefined' || otp === 'null') return null;
         return otp;
     };
-    const storedOtp = getStoredOtp();
+    const otp = getOtp();
 
     const handleRegenerateOtp = async () => {
         if (!user) {
@@ -135,31 +135,22 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
                         <span className="text-2xl font-mono font-black text-primary">₹{order.totalPrice}</span>
                     </div>
 
-                    {/* OTP Section for Online Orders */}
-                    {isOnlineOrder && ['Preparing', 'Ready'].includes(order.status) && (
-                        <div className={cn(
-                            "p-4 rounded-xl border-2 text-center space-y-3",
-                            order.status === 'Ready' ? "bg-green-50 border-green-200" : "bg-blue-50 border-blue-200"
-                        )}>
+                    {/* OTP Section - Only shown when order is Ready */}
+                    {isOnlineOrder && order.status === 'Ready' && (
+                        <div className="p-4 rounded-xl border-2 text-center space-y-3 bg-green-50 border-green-200">
                             <div className="flex items-center justify-center gap-2">
-                                <Key className={cn("w-4 h-4", order.status === 'Ready' ? "text-green-700" : "text-blue-700")} />
-                                <span className={cn(
-                                    "text-xs font-black uppercase tracking-widest",
-                                    order.status === 'Ready' ? "text-green-700" : "text-blue-700"
-                                )}>
+                                <Key className="w-4 h-4 text-green-700" />
+                                <span className="text-xs font-black uppercase tracking-widest text-green-700">
                                     Pickup OTP
                                 </span>
                             </div>
-                            {storedOtp ? (
-                                <p className={cn(
-                                    "text-4xl font-mono font-black tracking-[0.15em]",
-                                    order.status === 'Ready' ? "text-green-800" : "text-blue-800"
-                                )}>
-                                    {storedOtp}
+                            {otp ? (
+                                <p className="text-4xl font-mono font-black tracking-[0.15em] text-green-800">
+                                    {otp}
                                 </p>
                             ) : (
                                 <p className="text-sm text-muted-foreground italic">
-                                    OTP not found. Tap regenerate below.
+                                    OTP not available. Tap below to get one.
                                 </p>
                             )}
                             <Button
@@ -167,19 +158,14 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
                                 size="sm"
                                 onClick={handleRegenerateOtp}
                                 disabled={regenerating}
-                                className={cn(
-                                    "text-xs",
-                                    order.status === 'Ready'
-                                        ? "border-green-300 text-green-700 hover:bg-green-100"
-                                        : "border-blue-300 text-blue-700 hover:bg-blue-100"
-                                )}
+                                className="text-xs border-green-300 text-green-700 hover:bg-green-100"
                             >
                                 {regenerating ? (
                                     <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                                 ) : (
                                     <RefreshCw className="w-3 h-3 mr-1" />
                                 )}
-                                {storedOtp ? "Regenerate OTP" : "Get New OTP"}
+                                {otp ? "Regenerate OTP" : "Get OTP"}
                             </Button>
                             <p className="text-[10px] text-muted-foreground">
                                 Show this OTP to staff when collecting your order

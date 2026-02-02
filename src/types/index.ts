@@ -119,5 +119,5 @@ export interface VerifyPaymentResponse {
   success: boolean;
   orderId: string;
   token: number;
-  otp: string;    // plaintext, shown only once
+  // OTP is generated when order is marked "Ready" by staff, not at payment time
 }

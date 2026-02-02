@@ -150,7 +150,17 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     amount: orderData.amount,
                     currency: orderData.currency,
                     name: 'Kanteen',
-                    description: 'Food Order',
+                    description: (() => {
+                        const now = new Date();
+                        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                        const dayName = days[now.getDay()];
+                        const hour = now.getHours();
+                        let meal = 'Dinner';
+                        if (hour < 11) meal = 'Breakfast';
+                        else if (hour < 16) meal = 'Lunch';
+                        else if (hour < 19) meal = 'Snacks';
+                        return `${dayName} ${meal}`;
+                    })(),
                     order_id: orderData.razorpayOrderId,
                     prefill: {
                         name: orderData.prefill.name,

@@ -3,13 +3,12 @@ import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import Razorpay from 'razorpay';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
-import { verifyRazorpaySignature, generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
+import { verifyRazorpaySignature } from '@/lib/crypto-utils';
 import { logAuditEvent, getUserAgent } from '@/lib/audit-logger';
 import { enqueuePrintJobTransaction } from '@/lib/print-queue';
 import type { VerifyPaymentRequest, VerifyPaymentResponse } from '@/types';
 
 const CAMPUS_ID = 'default';
-const OTP_EXPIRY_MINUTES = 30;
 
 /**
  * Verifies Razorpay payment and finalizes order
@@ -212,13 +211,8 @@ export async function POST(request: NextRequest) {
                 updatedAt: FieldValue.serverTimestamp(),
             }, { merge: true });
 
-            // ====== GENERATE SECURE OTP WITH EXPIRY ======
-            const otp = generateSecureOTP();
-            const otpSalt = generateOTPSalt();
-            const otpHash = hashOTP(otp, otpSalt);
-            const otpExpiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000);
-
             // ====== UPDATE ORDER ======
+            // Note: OTP is NOT generated here - it will be generated when staff marks the order as "Ready"
             transaction.update(orderRef, {
                 status: 'Preparing',
                 'payment.status': 'paid',
@@ -228,10 +222,6 @@ export async function POST(request: NextRequest) {
                 'payment.amount': payment.amount,
                 'payment.currency': payment.currency,
                 token: nextToken,
-                otpHash: otpHash,
-                otpSalt: otpSalt,
-                otpExpiresAt: otpExpiresAt,
-                otpAttempts: 0,
                 dateKey: dateKey,
                 'audit.updatedAt': FieldValue.serverTimestamp(),
                 'audit.updatedBy': uid,
@@ -250,7 +240,6 @@ export async function POST(request: NextRequest) {
             return {
                 orderId: orderId,
                 token: nextToken,
-                otp: otp, // plaintext, shown only once
                 alreadyProcessed: false,
             };
         });
@@ -283,7 +272,7 @@ export async function POST(request: NextRequest) {
             success: true,
             orderId: result.orderId,
             token: result.token,
-            otp: result.otp!, // OTP is always present for new orders
+            // OTP is generated when order is marked "Ready" by staff
         };
 
         return NextResponse.json(response);

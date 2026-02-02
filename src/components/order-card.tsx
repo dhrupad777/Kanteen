@@ -73,34 +73,15 @@ export function OrderCard({ order, role }: OrderCardProps) {
               )}
             </div>
 
-            {role === 'student' && ['Preparing', 'Ready'].includes(order.status) && order.token && order.token >= 200 && (
-              <div className={cn(
-                "mt-3 pt-3 w-full animate-in fade-in slide-in-from-top-2 duration-500",
-                order.status === 'Ready' ? "border-t border-green-400/30" : "border-t border-blue-400/30"
-              )}>
-                {otp ? (
-                  <>
-                    <p className={cn(
-                      "text-[10px] uppercase font-bold tracking-[0.2em] mb-1",
-                      order.status === 'Ready'
-                        ? "text-green-800/60 dark:text-green-200/60"
-                        : "text-blue-800/60 dark:text-blue-200/60"
-                    )}>Pick-up OTP</p>
-                    <p className={cn(
-                      "text-2xl md:text-3xl font-mono font-black tracking-[0.1em]",
-                      order.status === 'Ready'
-                        ? "text-green-900 dark:text-green-100"
-                        : "text-blue-900 dark:text-blue-100"
-                    )}>{otp}</p>
-                  </>
-                ) : (
-                  <p className={cn(
-                    "text-[10px] leading-tight italic font-medium px-2",
-                    order.status === 'Ready'
-                      ? "text-green-800/70 dark:text-green-200/70"
-                      : "text-blue-800/70 dark:text-blue-200/70"
-                  )}>Tap to view order details</p>
-                )}
+            {/* Show OTP only when order is Ready */}
+            {role === 'student' && order.status === 'Ready' && order.token && order.token >= 200 && otp && (
+              <div className="mt-3 pt-3 w-full animate-in fade-in slide-in-from-top-2 duration-500 border-t border-green-400/30">
+                <p className="text-[10px] uppercase font-bold tracking-[0.2em] mb-1 text-green-800/60 dark:text-green-200/60">
+                  Pick-up OTP
+                </p>
+                <p className="text-2xl md:text-3xl font-mono font-black tracking-[0.1em] text-green-900 dark:text-green-100">
+                  {otp}
+                </p>
               </div>
             )}
           </div>

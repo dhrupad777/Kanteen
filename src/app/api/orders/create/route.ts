@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
                 platformCharges: platformCharges || 0,
                 token: nextToken,
                 otpHash,
+                secretOtp: otp,
                 status: 'Preparing',
                 createdAt: FieldValue.serverTimestamp(),
                 dateKey

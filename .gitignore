@@ -4,7 +4,7 @@ pnpm-lock.yaml
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# package-lock.json
 
 # Next.js
 .next/
@@ -49,5 +49,5 @@ firebase-debug.log
 # Secrets - NEVER commit these!
 firebase-service-account.json
 key.txt
-apphosting.yaml
+# apphosting.yaml
 !apphosting.yaml.example

@@ -72,8 +72,7 @@ function OrderContent() {
     // Razorpay
     const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
         onSuccess: (response) => {
-            // Store OTP in local storage for the student to see
-            localStorage.setItem(`kanteen_otp_${response.orderId}`, response.otp);
+            // OTP is now generated when order is marked "Ready" by staff, not at payment time
             clearCart();
             router.push(`/order/success?token=${response.token}&orderId=${response.orderId}`);
         },

@@ -99,6 +99,7 @@ export async function POST(
         // ====== UPDATE ORDER ======
         await orderRef.update({
             otpHash: otpHash,
+            secretOtp: otp,
             otpSalt: otpSalt,
             otpExpiresAt: otpExpiresAt,
             otpAttempts: 0,

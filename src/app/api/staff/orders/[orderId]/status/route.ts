@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { validateTransition, getActorRoleFromToken, OrderStatus } from '@/lib/order-state-machine';
+import { generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
 import { logAuditEvent, getClientIP, getUserAgent } from '@/lib/audit-logger';
 import { updateDailyReportOnCompletion } from '@/lib/reports-admin';
 import { rateLimit } from '@/lib/rate-limit';
@@ -134,6 +135,22 @@ export async function POST(
         } else if (status === 'Ready') {
             updateData['kitchen.readyAt'] = FieldValue.serverTimestamp();
             updateData['kitchen.markedReadyBy'] = userId;
+
+            // Auto-generate new OTP when marked Ready
+            const newOtp = generateSecureOTP();
+            const newSalt = generateOTPSalt();
+            const newHash = hashOTP(newOtp, newSalt);
+            const expiryMinutes = 30;
+            const now = new Date();
+            const expiresAt = new Date(now.getTime() + expiryMinutes * 60000);
+
+            updateData['secretOtp'] = newOtp;
+            updateData['otpHash'] = newHash;
+            updateData['otpSalt'] = newSalt;
+            updateData['otpExpiresAt'] = expiresAt;
+            // Clear any previous attempts/locks
+            updateData['otpAttempts'] = 0;
+            updateData['otpLockedUntil'] = FieldValue.delete();
         }
 
         await orderRef.update(updateData);
