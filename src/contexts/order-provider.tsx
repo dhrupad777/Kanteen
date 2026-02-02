@@ -116,11 +116,12 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false); // Ensure loading is set to false even on error
       }));
 
-      // 3. STUDENT PRIVATE: Own orders
+      // 3. STUDENT PRIVATE: Own active orders (only after payment confirmed)
       if (user) {
         const qPrivate = query(
           collection(db, "orders"),
           where("studentId", "==", user.uid),
+          where("status", "in", ["Preparing", "Ready"]),
           limit(20)
         );
         listeners.push(onSnapshot(qPrivate, updateOrdersFromSnapshot, (err) => {
