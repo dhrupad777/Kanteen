@@ -1,41 +1,56 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useMemo } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CupSoda, Loader2, ShoppingBag } from 'lucide-react';
+import { CupSoda, ShoppingBag, ChefHat } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/hooks/use-auth';
-import { useRouter } from 'next/navigation';
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { MenuDisplay } from '@/components/menu-display';
+import { StudentDashboardSkeleton } from '@/components/skeletons';
 
 export default function StudentDashboardPage() {
   const { orders, loading: ordersLoading } = useOrders();
   const { user, userProfile, loading: authLoading } = useAuth();
-  const router = useRouter();
 
   // Auth check removed - dashboard is public
 
-
   const loading = ordersLoading || authLoading;
 
-  const myActiveOrders = orders.filter(o =>
-    o.studentId === user?.uid &&
-    ['Preparing', 'Ready'].includes(o.status)
+  // Memoize filtered orders to prevent unnecessary recalculations
+  const myActiveOrders = useMemo(() =>
+    orders.filter(o =>
+      o.studentId === user?.uid &&
+      ['Preparing', 'Ready'].includes(o.status)
+    ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+    [orders, user?.uid]
   );
-  const publicReadyOrders = orders.filter(o => o.status === 'Ready' && (!o.token || o.token < 201) && o.studentId !== user?.uid);
+
+  // Offline orders being prepared (coupon grid entries visible to all)
+  const publicPreparingOrders = useMemo(() =>
+    orders.filter(o =>
+      o.status === 'Preparing' &&
+      (!o.token || o.token < 201) && // Offline tokens (1-200) or no token
+      o.studentId !== user?.uid
+    ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+    [orders, user?.uid]
+  );
+
+  // Offline orders ready for pickup
+  const publicReadyOrders = useMemo(() =>
+    orders.filter(o =>
+      o.status === 'Ready' &&
+      (!o.token || o.token < 201) && // Offline tokens (1-200) or no token
+      o.studentId !== user?.uid
+    ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+    [orders, user?.uid]
+  );
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-10rem)]">
-        <Loader2 className="h-16 w-16 animate-spin text-primary" />
-      </div>
-    );
+    return <StudentDashboardSkeleton />;
   }
 
   return (
@@ -60,26 +75,30 @@ export default function StudentDashboardPage() {
 
       <MenuDisplay />
 
-      <motion.div
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        className="w-full"
-      >
-        <Link href="/order" className="block w-full">
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400 via-orange-500 to-red-600 p-1 shadow-lg shadow-orange-500/20">
-            <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
-            <div className="relative flex items-center justify-between bg-white/5 backdrop-blur-sm px-6 py-4 rounded-xl border border-white/20">
-              <div className="flex flex-col text-left">
-                <span className="text-white font-bold text-xl tracking-tight">Order Online</span>
-                <span className="text-orange-50 font-medium text-xs opacity-90">Order. Arrive. Eat.</span>
-              </div>
-              <div className="bg-white/20 p-2.5 rounded-full backdrop-blur-md">
-                <ShoppingBag className="h-6 w-6 text-white" />
-              </div>
+      <Link href="/order" className="block w-full group">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400 via-orange-500 to-red-600 p-1 shadow-lg shadow-orange-500/20 transition-transform duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]">
+          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="relative flex items-center justify-between bg-white/5 backdrop-blur-sm px-6 py-4 rounded-xl border border-white/20">
+            <div className="flex flex-col text-left">
+              <span className="text-white font-bold text-xl tracking-tight">Order Online</span>
+              <span className="text-orange-50 font-medium text-xs opacity-90">Order. Arrive. Eat.</span>
+            </div>
+            <div className="bg-white/20 p-2.5 rounded-full backdrop-blur-md">
+              <ShoppingBag className="h-6 w-6 text-white" />
             </div>
           </div>
-        </Link>
-      </motion.div>
+        </div>
+      </Link>
+
+      {publicPreparingOrders.length > 0 && (
+        <DashboardSection
+          title="Being Prepared"
+          icon={<ChefHat className="w-6 h-6 text-blue-600" />}
+          orders={publicPreparingOrders}
+          emptyMessage=""
+          className="bg-blue-50 border-blue-100"
+        />
+      )}
 
       {publicReadyOrders.length > 0 && (
         <DashboardSection
@@ -91,7 +110,7 @@ export default function StudentDashboardPage() {
         />
       )}
 
-      {orders.length === 0 && !loading && (
+      {myActiveOrders.length === 0 && publicPreparingOrders.length === 0 && publicReadyOrders.length === 0 && !loading && (
         <Card className="text-center">
           <CardHeader>
             <CardTitle>No Active Orders</CardTitle>
@@ -139,26 +158,18 @@ function DashboardSection({
       <CardContent>
         {orders.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
-            <AnimatePresence>
-              {orders.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).map(order => {
-                return (
-                  <motion.div
-                    key={order.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="relative group"
-                  >
-                    <OrderCard
-                      order={order}
-                      role="student"
-                    />
-                  </motion.div>
-                )
-              })}
-            </AnimatePresence>
+            {orders.map((order, index) => (
+              <div
+                key={order.id}
+                className="relative group animate-in fade-in slide-in-from-bottom-2 duration-300"
+                style={{ animationDelay: `${Math.min(index * 50, 200)}ms` }}
+              >
+                <OrderCard
+                  order={order}
+                  role="student"
+                />
+              </div>
+            ))}
           </div>
         ) : (
           <p className="text-muted-foreground p-4 text-center">{emptyMessage}</p>

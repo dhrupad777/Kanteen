@@ -94,6 +94,8 @@ export interface CreateRazorpayOrderRequest {
   items: CheckoutItem[];
   isParcel?: boolean;
   platformCharges?: number;
+  /** Kitchen notes (e.g., "make it spicy", "less oil") - max 200 chars */
+  note?: string;
 }
 
 export interface CreateRazorpayOrderResponse {
@@ -120,4 +122,45 @@ export interface VerifyPaymentResponse {
   orderId: string;
   token: number;
   // OTP is generated when order is marked "Ready" by staff, not at payment time
+}
+
+// ============================================================
+// Print Service Types
+// ============================================================
+
+export type PrintJobStatus = 'pending' | 'printing' | 'completed' | 'failed';
+
+export interface PrintJob {
+  id: string;
+  orderId: string;
+  token: number;
+  items: { name: string; quantity: number; price: number }[];
+  totalPrice: number;
+  customerName?: string;
+  customerEmail?: string;
+  isParcel?: boolean;
+  status: PrintJobStatus;
+  createdAt: Date;
+  printedAt?: Date;
+  printerId?: string; // ID of the printer/device that processed this job
+}
+
+export interface PrintQueueResponse {
+  jobs: PrintJob[];
+  count: number;
+}
+
+export interface AddPrintJobRequest {
+  orderId: string;
+  token: number;
+  items: { name: string; quantity: number; price: number }[];
+  totalPrice: number;
+  customerName?: string;
+  customerEmail?: string;
+  isParcel?: boolean;
+}
+
+export interface CompletePrintJobRequest {
+  jobId: string;
+  printerId?: string;
 }

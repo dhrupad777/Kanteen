@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useRazorpay } from "@/hooks/use-razorpay";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag, Package } from "lucide-react";
+import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag, Package, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useState } from "react";
@@ -18,6 +18,7 @@ export default function CartPage() {
     const { items, isHydrated, totalItems, totalPrice, increment, decrement, removeItem, clearCart, getCheckoutItems } = useCart();
     const [processing, setProcessing] = useState(false);
     const [isParcel, setIsParcel] = useState(false);
+    const [note, setNote] = useState('');
 
     // Razorpay checkout
     const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
@@ -189,6 +190,26 @@ export default function CartPage() {
                             />
                         </div>
 
+                        {/* Kitchen Notes */}
+                        <div className="px-2 py-3 bg-gray-50 rounded-xl border border-gray-200">
+                            <div className="flex items-center gap-2 mb-2">
+                                <MessageSquare className="h-4 w-4 text-gray-600" />
+                                <span className="font-medium text-gray-900 text-sm">Kitchen Notes</span>
+                                <span className="text-xs text-gray-400">(optional)</span>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="e.g., Make it spicy, less oil, no onion..."
+                                value={note}
+                                onChange={(e) => setNote(e.target.value.slice(0, 200))}
+                                className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                maxLength={200}
+                            />
+                            {note && (
+                                <p className="text-xs text-gray-400 mt-1 text-right">{note.length}/200</p>
+                            )}
+                        </div>
+
                         {/* Price breakdown */}
                         <div className="space-y-1 px-2 pt-2 border-t border-gray-200">
                             <div className="flex justify-between text-sm text-gray-600">
@@ -231,6 +252,7 @@ export default function CartPage() {
                                     items: checkoutItems,
                                     isParcel: isParcel,
                                     platformCharges: platformCharges,
+                                    note: note.trim() || undefined,
                                 });
                                 // Success handled by onSuccess callback
                             } catch (error: any) {

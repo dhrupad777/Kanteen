@@ -24,7 +24,15 @@ const nextConfig: NextConfig = {
 
   // Experimental optimizations
   experimental: {
-    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', 'recharts'],
+    optimizePackageImports: [
+      'lucide-react',
+      '@radix-ui/react-icons',
+      'recharts',
+      'framer-motion',
+      'date-fns',
+      'firebase/firestore',
+      'firebase/auth',
+    ],
   },
 
   // Security and caching headers

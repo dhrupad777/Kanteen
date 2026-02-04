@@ -170,9 +170,13 @@ export async function POST(
             },
         });
 
-        // If newly completed, update the daily report
+        // If newly completed, update the daily report and cleanup note
         if (status === 'Completed' && orderData.status !== 'Completed') {
             await updateDailyReportOnCompletion({ ...orderData, status: 'Completed' });
+            // Cleanup note to save storage (no longer needed after completion)
+            if (orderData.note) {
+                await orderRef.update({ note: FieldValue.delete() });
+            }
         }
 
         return NextResponse.json({ success: true });

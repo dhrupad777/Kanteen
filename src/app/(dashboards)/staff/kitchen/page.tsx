@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { useOrders } from '@/contexts/order-provider';
-import { Order } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, Printer } from 'lucide-react';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -14,9 +13,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
-import { ReportsManager } from '@/components/reports-manager';
-
 import { checkManagerAllowlist } from '@/lib/auth';
+import { KitchenViewSkeleton } from '@/components/skeletons';
+import { usePrintQueueRealtime } from '@/hooks/use-print-queue-realtime';
+import Link from 'next/link';
+
+// Lazy load ReportsManager as it's heavy and not immediately needed
+const ReportsManager = lazy(() => import('@/components/reports-manager').then(m => ({ default: m.ReportsManager })));
 
 export default function KitchenDashboardPage() {
     const { orders, loading: ordersLoading } = useOrders();
@@ -27,6 +30,11 @@ export default function KitchenDashboardPage() {
     const [verifyingOtp, setVerifyingOtp] = useState<string | null>(null);
     const [otpValue, setOtpValue] = useState('');
     const { toast } = useToast();
+
+    // Real-time print queue count (auto-starts when authorized)
+    const { pendingCount: printQueueCount } = usePrintQueueRealtime({
+        autoStart: true,
+    });
 
     useEffect(() => {
         async function verifyManager() {
@@ -157,8 +165,8 @@ export default function KitchenDashboardPage() {
 
     if (authLoading || ordersLoading || isAuthorized === null) {
         return (
-            <div className="flex items-center justify-center h-screen">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-6">
+                <KitchenViewSkeleton />
             </div>
         );
     }
@@ -177,14 +185,26 @@ export default function KitchenDashboardPage() {
                         </div>
                     </div>
 
-                    <div className="relative w-full md:w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Search token..."
-                            className="pl-9 h-10 md:h-11 bg-slate-100/50 border-transparent focus:bg-white transition-colors"
-                            value={searchToken}
-                            onChange={(e) => setSearchToken(e.target.value)}
-                        />
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <div className="relative flex-1 md:w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search token..."
+                                className="pl-9 h-10 md:h-11 bg-slate-100/50 border-transparent focus:bg-white transition-colors"
+                                value={searchToken}
+                                onChange={(e) => setSearchToken(e.target.value)}
+                            />
+                        </div>
+                        <Link href="/staff/kitchen/print" className="relative">
+                            <Button variant="outline" size="icon" className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-primary/20 hover:bg-primary/5">
+                                <Printer className="h-5 w-5 text-primary" />
+                            </Button>
+                            {printQueueCount > 0 && (
+                                <Badge className="absolute -top-1 -right-1 px-1.5 py-0 min-w-[1.25rem] h-5 flex items-center justify-center bg-red-500 hover:bg-red-600 text-[10px] font-black border-none ring-2 ring-white shadow-sm animate-pulse">
+                                    {printQueueCount}
+                                </Badge>
+                            )}
+                        </Link>
                     </div>
                 </div>
             </header>
@@ -209,7 +229,13 @@ export default function KitchenDashboardPage() {
                     </TabsList>
 
                     <TabsContent value="Reports">
-                        <ReportsManager />
+                        <Suspense fallback={
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            </div>
+                        }>
+                            <ReportsManager />
+                        </Suspense>
                     </TabsContent>
 
                     {(['Preparing', 'Ready'] as const).map((status) => (

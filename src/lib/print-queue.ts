@@ -17,6 +17,8 @@ export interface PrintJobPayload {
     token: number;
     items: Array<{ name: string; qty: number }>;
     studentName?: string;
+    studentEmail?: string;
+    note?: string;
     isParcel: boolean;
     createdAt: string;
 }

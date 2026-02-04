@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { signInWithGoogle, createStudentProfile, checkStudentProfileExists } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -10,17 +10,20 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { useRouter } from "next/navigation";
 
 // Order-specific imports
-import { CartProvider, useCart } from "@/contexts/cart-provider";
+import { useCart } from "@/contexts/cart-provider";
 import { useMenuItems } from "@/hooks/use-menu-items";
 import { useRazorpay } from "@/hooks/use-razorpay";
-import { CategoryDialog } from "@/components/order/category-dialog";
-import { MenuItemCard, MenuItemCardSkeleton } from "@/components/order/menu-item-card";
-import { CartPanel } from "@/components/order/cart-panel";
-import { CartBottomBar } from "@/components/order/cart-bottom-bar";
+import { MenuItemCard } from "@/components/order/menu-item-card";
 import { MENU_CATEGORIES, MenuCategory, MenuItem } from "@/types/menu-item";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { OrderPageSkeleton, CategoryCardSkeleton } from "@/components/skeletons";
+
+// Lazy load heavy components for better initial load
+const CategoryDialog = lazy(() => import("@/components/order/category-dialog").then(m => ({ default: m.CategoryDialog })));
+const CartPanel = lazy(() => import("@/components/order/cart-panel").then(m => ({ default: m.CartPanel })));
+const CartBottomBar = lazy(() => import("@/components/order/cart-bottom-bar").then(m => ({ default: m.CartBottomBar })));
 
 // Icon Mapping
 const CATEGORY_ICONS: Record<MenuCategory, any> = {
@@ -193,16 +196,9 @@ function OrderContent() {
         }, {} as Record<MenuCategory, MenuItem[]>);
     }, [menuItems]);
 
-    // Loading state
+    // Loading state - show skeleton for better perceived performance
     if (loading || checkingProfile) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-50">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-sm text-gray-500">Loading...</p>
-                </div>
-            </div>
-        );
+        return <OrderPageSkeleton />;
     }
 
     // State 1: Not Signed In - Orange Theme
@@ -352,11 +348,11 @@ function OrderContent() {
                             </div>
                         )}
 
-                        {/* Loading State */}
+                        {/* Loading State - Category skeletons */}
                         {menuLoading && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {[1, 2, 3, 4, 5, 6].map((i) => (
-                                    <div key={i} className="h-32 bg-gray-200 rounded-3xl animate-pulse" />
+                            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
+                                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                                    <CategoryCardSkeleton key={i} />
                                 ))}
                             </div>
                         )}
@@ -390,14 +386,15 @@ function OrderContent() {
                                             if (items.length === 0) return null;
 
                                             return (
-                                                <CategoryDialog
-                                                    key={cat.value}
-                                                    category={cat.value}
-                                                    label={cat.label}
-                                                    items={items}
-                                                    icon={CATEGORY_ICONS[cat.value]}
-                                                    image={CATEGORY_IMAGES[cat.value]}
-                                                />
+                                                <Suspense key={cat.value} fallback={<CategoryCardSkeleton />}>
+                                                    <CategoryDialog
+                                                        category={cat.value}
+                                                        label={cat.label}
+                                                        items={items}
+                                                        icon={CATEGORY_ICONS[cat.value]}
+                                                        image={CATEGORY_IMAGES[cat.value]}
+                                                    />
+                                                </Suspense>
                                             );
                                         })}
                                     </div>
@@ -406,17 +403,26 @@ function OrderContent() {
                         )}
                     </div>
 
-                    {/* Cart Panel (Desktop) */}
+                    {/* Cart Panel (Desktop) - Lazy loaded */}
                     <div className="hidden md:block w-80 shrink-0">
                         <div className="sticky top-24">
-                            <CartPanel onCheckout={handleCheckout} />
+                            <Suspense fallback={
+                                <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm animate-pulse">
+                                    <div className="h-6 w-24 bg-gray-200 rounded mb-4" />
+                                    <div className="h-24 bg-gray-100 rounded-xl" />
+                                </div>
+                            }>
+                                <CartPanel onCheckout={handleCheckout} />
+                            </Suspense>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Cart Bottom Bar (Mobile) */}
-            <CartBottomBar className="hide-when-dialog-open" />
+            {/* Cart Bottom Bar (Mobile) - Lazy loaded */}
+            <Suspense fallback={null}>
+                <CartBottomBar className="hide-when-dialog-open" />
+            </Suspense>
         </div>
     );
 }

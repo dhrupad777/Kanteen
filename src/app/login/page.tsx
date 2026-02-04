@@ -40,6 +40,7 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/staff';
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -49,17 +50,22 @@ function LoginContent() {
     },
   });
 
+  // Handle redirect when user is authenticated
   useEffect(() => {
-    if (user) {
-      router.push(redirect);
+    if (user && !loading) {
+      // Small delay to ensure auth state is fully propagated
+      const timer = setTimeout(() => {
+        router.replace(redirect);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [user, router, redirect]);
+  }, [user, loading, router, redirect]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setAuthError(null);
     try {
       await signInWithEmail(values.email, values.password);
-      router.push(redirect);
+      // Redirect handled by useEffect when user state changes
     } catch (error: any) {
       setAuthError("Invalid email or password. Please try again.");
     }
@@ -67,20 +73,29 @@ function LoginContent() {
 
   async function handleGoogleSignIn() {
     setAuthError(null);
+    setIsSigningIn(true);
     try {
       await signInWithGoogle();
-      router.push(redirect);
+      // Don't push here - let the useEffect handle redirect after auth state updates
+      // This prevents race conditions where we redirect before auth is confirmed
     } catch (error: any) {
-      setAuthError("Google sign-in failed. Please try again.");
+      setIsSigningIn(false);
+      // Only show error if it's not a user-cancelled popup
+      if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
+        setAuthError("Google sign-in failed. Please try again.");
+      }
     }
   }
 
-  if (loading || user) {
+  if (loading || user || isSigningIn) {
     return (
       <div className="flex flex-col min-h-screen">
         <KanteenHeader />
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-16 w-16 animate-spin text-primary" />
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-16 w-16 animate-spin text-primary" />
+            {isSigningIn && <p className="text-muted-foreground">Signing in...</p>}
+          </div>
         </div>
       </div>
     );

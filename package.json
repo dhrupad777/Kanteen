@@ -12,7 +12,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy:manual": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-manual.ps1"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.13.0",

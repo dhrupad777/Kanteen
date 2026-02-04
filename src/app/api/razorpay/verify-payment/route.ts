@@ -233,6 +233,8 @@ export async function POST(request: NextRequest) {
                 token: nextToken,
                 items: orderData.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
                 studentName: orderData.userName || undefined,
+                studentEmail: orderData.userEmail || undefined,
+                note: orderData.note || undefined,
                 isParcel: orderData.isParcel || false,
                 createdAt: now.toISOString(),
             });

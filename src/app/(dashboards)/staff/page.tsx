@@ -2,20 +2,19 @@
 
 export const dynamic = "force-dynamic";
 
-
 import { useEffect, useState } from 'react';
 import { useOrders } from '@/contexts/order-provider';
-import { Order } from '@/types';
 import { CouponEntryForm } from '@/components/coupon-entry-form';
 import { checkManagerAllowlist } from '@/lib/auth';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { Loader2, ShieldX, Utensils } from 'lucide-react';
+import { ShieldX, Utensils } from 'lucide-react';
 import { CouponGrid } from '@/components/coupon-grid';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { MenuManager } from '@/components/menu-manager';
+import { StaffDashboardSkeleton } from '@/components/skeletons';
 
 export default function StaffDashboardPage() {
   console.log("Rendering Staff Dashboard");
@@ -45,11 +44,7 @@ export default function StaffDashboardPage() {
   const isLoading = authLoading || ordersLoading || isAuthorized === null;
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-10rem)]">
-        <Loader2 className="h-16 w-16 animate-spin text-primary" />
-      </div>
-    );
+    return <StaffDashboardSkeleton />;
   }
 
   // Check if user is a manager using allowlist

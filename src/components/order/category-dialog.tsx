@@ -48,10 +48,13 @@ export function CategoryDialog({ category, label, items, icon: Icon, image }: Ca
                             "text-primary/80 group-hover:text-primary transition-colors"
                         )}>
                             {image ? (
-                                <img
+                                <Image
                                     src={image}
                                     alt={label}
+                                    width={64}
+                                    height={64}
                                     className="h-10 w-10 sm:h-14 sm:w-14 md:h-16 md:w-16 object-contain drop-shadow-sm"
+                                    loading="lazy"
                                 />
                             ) : (
                                 <Icon className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12" />
@@ -70,9 +73,11 @@ export function CategoryDialog({ category, label, items, icon: Icon, image }: Ca
                     <div className="flex items-center gap-3">
                         <div className="h-12 w-12 flex items-center justify-center text-primary shrink-0">
                             {image ? (
-                                <img
+                                <Image
                                     src={image}
                                     alt={label}
+                                    width={40}
+                                    height={40}
                                     className="h-10 w-10 object-contain drop-shadow-sm"
                                 />
                             ) : (

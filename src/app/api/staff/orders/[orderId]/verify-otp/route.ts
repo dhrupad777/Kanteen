@@ -190,6 +190,8 @@ export async function POST(
                 'kitchen.updatedBy': userId,
                 'audit.updatedAt': FieldValue.serverTimestamp(),
                 'audit.updatedBy': userId,
+                // Cleanup: Delete note to save storage (no longer needed after pickup)
+                note: FieldValue.delete(),
             });
 
             await logAuditEvent({

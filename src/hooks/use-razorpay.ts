@@ -24,6 +24,8 @@ interface RazorpayCheckoutOptions {
     }[];
     isParcel?: boolean;
     platformCharges?: number;
+    /** Kitchen notes (e.g., "make it spicy", "less oil") */
+    note?: string;
 }
 
 export function useRazorpay(options: UseRazorpayOptions = {}) {
@@ -78,6 +80,7 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                 items: checkoutOptions.items,
                 isParcel: checkoutOptions.isParcel,
                 platformCharges: checkoutOptions.platformCharges,
+                note: checkoutOptions.note,
             }),
         });
 

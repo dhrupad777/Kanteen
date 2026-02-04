@@ -46,6 +46,25 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
     if (!authLoading) checkRole();
   }, [user, authLoading]);
 
+  // Fetch public orders via API (for unauthenticated users)
+  const fetchPublicOrders = useCallback(async () => {
+    try {
+      const response = await fetch('/api/orders/public');
+      if (!response.ok) throw new Error('Failed to fetch public orders');
+      const data = await response.json();
+      const fetchedOrders: Order[] = data.orders.map((o: any) => ({
+        ...o,
+        createdAt: new Date(o.createdAt),
+      }));
+      fetchedOrders.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      setOrders(fetchedOrders);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching public orders:', error);
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (authLoading || isManager === null) return;
 
@@ -102,40 +121,59 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         }
         setLoading(false); // Ensure loading is set to false even on error
       }));
-    } else {
-      // 2. STUDENT/PUBLIC: All Ready orders (filtered client-side for offline coupons)
-      // Note: Fetches all Ready orders to avoid composite index requirement on (status, token)
-      const qPublic = query(
+    } else if (user) {
+      // 2. LOGGED IN STUDENT: Use Firestore listeners
+      // Ready orders (for "Ready to Collect" board)
+      const qReady = query(
         collection(db, "orders"),
         where("status", "==", "Ready"),
+        orderBy("createdAt", "desc"),
         limit(200)
       );
-      listeners.push(onSnapshot(qPublic, updateOrdersFromSnapshot, (err) => {
+      listeners.push(onSnapshot(qReady, updateOrdersFromSnapshot, (err) => {
         if (err.code !== 'permission-denied') {
-          console.error("Public listener error:", err);
+          console.error("Public Ready listener error:", err);
         }
-        setLoading(false); // Ensure loading is set to false even on error
+        setLoading(false);
       }));
 
-      // 3. STUDENT PRIVATE: Own active orders (only after payment confirmed)
-      if (user) {
-        const qPrivate = query(
-          collection(db, "orders"),
-          where("studentId", "==", user.uid),
-          where("status", "in", ["Preparing", "Ready"]),
-          limit(20)
-        );
-        listeners.push(onSnapshot(qPrivate, updateOrdersFromSnapshot, (err) => {
-          if (err.code !== 'permission-denied') {
-            console.error("Private listener error:", err);
-          }
-          setLoading(false); // Ensure loading is set to false even on error
-        }));
-      }
+      // Preparing orders (offline coupon orders being prepared)
+      const qPreparing = query(
+        collection(db, "orders"),
+        where("status", "==", "Preparing"),
+        orderBy("createdAt", "desc"),
+        limit(100)
+      );
+      listeners.push(onSnapshot(qPreparing, updateOrdersFromSnapshot, (err) => {
+        if (err.code !== 'permission-denied') {
+          console.error("Public Preparing listener error:", err);
+        }
+      }));
+
+      // STUDENT PRIVATE: Own active orders (only after payment confirmed)
+      const qPrivate = query(
+        collection(db, "orders"),
+        where("studentId", "==", user.uid),
+        where("status", "in", ["Preparing", "Ready"]),
+        limit(20)
+      );
+      listeners.push(onSnapshot(qPrivate, updateOrdersFromSnapshot, (err) => {
+        if (err.code !== 'permission-denied') {
+          console.error("Private listener error:", err);
+        }
+      }));
+    } else {
+      // 3. UNAUTHENTICATED USER: Use API endpoint with polling
+      // Initial fetch
+      fetchPublicOrders();
+
+      // Poll every 5 seconds for updates
+      const pollInterval = setInterval(fetchPublicOrders, 5000);
+      listeners.push(() => clearInterval(pollInterval));
     }
 
     return () => listeners.forEach(unsub => unsub());
-  }, [user, authLoading, isManager, isVerifiedManager]);
+  }, [user, authLoading, isManager, isVerifiedManager, fetchPublicOrders]);
 
 
   const addOrder = useCallback(async (couponId: string) => {

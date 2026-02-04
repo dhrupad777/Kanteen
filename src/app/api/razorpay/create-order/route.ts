@@ -47,7 +47,10 @@ export async function POST(request: NextRequest) {
         const uid = decodedToken.uid;
 
         const body: CreateRazorpayOrderRequest = await request.json();
-        const { items, isParcel = false, platformCharges = 0 } = body;
+        const { items, isParcel = false, platformCharges = 0, note } = body;
+
+        // Validate note (max 200 chars)
+        const sanitizedNote = note ? String(note).substring(0, 200).trim() : undefined;
 
         // ====== INPUT VALIDATION ======
         if (!items || !Array.isArray(items)) {
@@ -159,7 +162,7 @@ export async function POST(request: NextRequest) {
         }));
 
         const orderRef = db.collection('orders').doc();
-        const orderData = {
+        const orderData: Record<string, any> = {
             studentId: uid,
             userName: decodedToken.name || '',
             userEmail: decodedToken.email || '',
@@ -176,6 +179,11 @@ export async function POST(request: NextRequest) {
                 status: 'created',
             },
         };
+
+        // Add note only if provided (to save storage)
+        if (sanitizedNote) {
+            orderData.note = sanitizedNote;
+        }
 
         await orderRef.set(orderData);
 
