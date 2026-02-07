@@ -10,17 +10,15 @@ export async function GET() {
     try {
         const db = getAdminDb();
 
-        // Fetch Ready orders (limit 200)
+        // Fetch Ready orders (limit 200) - no orderBy to avoid index requirement
         const readySnapshot = await db.collection('orders')
             .where('status', '==', 'Ready')
-            .orderBy('createdAt', 'desc')
             .limit(200)
             .get();
 
         // Fetch Preparing orders (limit 100)
         const preparingSnapshot = await db.collection('orders')
             .where('status', '==', 'Preparing')
-            .orderBy('createdAt', 'desc')
             .limit(100)
             .get();
 
@@ -57,9 +55,9 @@ export async function GET() {
 
         return NextResponse.json({ orders });
     } catch (error: any) {
-        console.error('Error fetching public orders:', error);
+        console.error('Error fetching public orders:', error?.message || error, error?.code);
         return NextResponse.json(
-            { error: 'Failed to fetch orders' },
+            { error: 'Failed to fetch orders', details: error?.message || 'Unknown error' },
             { status: 500 }
         );
     }

@@ -55,13 +55,15 @@ export default function StudentDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-2">
-        <div>
-          <h1 className="font-headline text-3xl font-bold text-primary">
-            {user ? `Hello, ${userProfile?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'Student'}` : 'Hello'}
-          </h1>
+      {user && (
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-2">
+          <div>
+            <h1 className="font-headline text-3xl font-bold text-primary">
+              Hello, {userProfile?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'Student'}
+            </h1>
+          </div>
         </div>
-      </div>
+      )}
 
       {myActiveOrders.length > 0 && (
         <DashboardSection
