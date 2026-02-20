@@ -55,9 +55,12 @@ service cloud.firestore {
 
     // ====== ORDERS COLLECTION ======
     match /orders/{orderId} {
-      // Students can read their own orders, staff can read all
-      allow read: if isAuthenticated() 
-        && (resource.data.studentId == request.auth.uid || isManager());
+      // Students can read their own orders or any Preparing/Ready order (for public board)
+      // Staff/managers can read all orders
+      allow read: if isAuthenticated()
+        && (resource.data.studentId == request.auth.uid
+            || isManager()
+            || resource.data.status in ['Preparing', 'Ready']);
       
       // Only server (Admin SDK) can create orders
       allow create: if false;
