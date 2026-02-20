@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import { signInWithCustomToken } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,33 +45,20 @@ function StaffLoginForm() {
         setLoading(true);
 
         try {
-            // Verify credentials against Firestore (server-side)
-            const res = await fetch("/api/auth/staff-login", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email: email.trim(), password }),
-            });
+            // Sign in directly with Firebase Auth (no server roundtrip needed)
+            const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
 
-            const data = await res.json();
-
-            if (!res.ok) {
-                setError(data.error ?? "Login failed. Please try again.");
-                return;
-            }
-
-            // Sign into Firebase with the custom token
-            // This gives us a real Firebase Auth session so user.getIdToken()
-            // works for OTP verification and status update API calls.
-            await signInWithCustomToken(auth, data.customToken);
-
-            // Force-refresh to ensure custom claims are loaded
-            const currentUser = auth.currentUser;
-            if (currentUser) await currentUser.getIdToken(true);
+            // Force-refresh so custom role claims are available immediately
+            await credential.user.getIdToken(true);
 
             router.replace(redirect);
         } catch (err: any) {
-            console.error("[staff-login]", err);
-            setError(err?.message ?? "Something went wrong. Please try again.");
+            const code = err?.code ?? "";
+            if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+                setError("Invalid email or password.");
+            } else {
+                setError(err?.message ?? "Something went wrong. Please try again.");
+            }
         } finally {
             setLoading(false);
         }
@@ -145,10 +132,6 @@ function StaffLoginForm() {
                             {loading ? "Signing in…" : "Sign In"}
                         </Button>
                     </form>
-
-                    <p className="mt-4 text-center text-xs text-muted-foreground">
-                        Credentials are managed in Firebase Console.
-                    </p>
                 </CardContent>
             </Card>
         </div>

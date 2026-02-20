@@ -1,40 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase-admin';
+import { adminDb, getAdminAuth } from '@/lib/firebase-admin';
 
 /**
  * POST /api/auth/staff-setup
  *
- * ONE-TIME SETUP ROUTE — seeds the initial Firestore credentials document.
- * Protected by STAFF_SETUP_SECRET env var.
+ * Creates / updates Firebase Auth users with email+password and sets the
+ * `role` custom claim on each.  Also writes to Firestore for reference.
  *
- * After running, manage credentials directly in Firebase Console:
- *   Firestore → staff_credentials → config → accounts array
+ * Protected by STAFF_SETUP_SECRET env var.
  *
  * Request body:
  * {
  *   "accounts": [
- *     { "email": "staff@kanteen.app", "password": "<choose>", "role": "kitchen_staff" },
- *     { "email": "dhrupadrajpurohit@gmail.com", "password": "<choose>", "role": "kitchen_manager" }
+ *     { "email": "kitchen.mrc@gmail.com", "password": "<pass>", "role": "kitchen_staff" },
+ *     { "email": "manager.mrc@gmail.com", "password": "<pass>", "role": "kitchen_manager" }
  *   ]
  * }
  *
- * Example curl:
- *   curl -X POST https://<host>/api/auth/staff-setup \
- *     -H "Content-Type: application/json" \
- *     -H "x-setup-secret: <STAFF_SETUP_SECRET>" \
- *     -d '{"accounts":[{"email":"staff@kanteen.app","password":"<pass>","role":"kitchen_staff"},{"email":"dhrupadrajpurohit@gmail.com","password":"<pass>","role":"kitchen_manager"}]}'
+ * After setup, passwords can be changed in Firebase Console → Authentication → Users.
+ * Roles can be updated by re-running this endpoint.
  */
 export async function POST(request: NextRequest) {
     const secret = request.headers.get('x-setup-secret');
     const expectedSecret = process.env.STAFF_SETUP_SECRET;
 
     if (!expectedSecret) {
-        return NextResponse.json(
-            { error: 'STAFF_SETUP_SECRET env var not configured.' },
-            { status: 503 }
-        );
+        return NextResponse.json({ error: 'STAFF_SETUP_SECRET env var not configured.' }, { status: 503 });
     }
-
     if (secret !== expectedSecret) {
         return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
@@ -48,10 +40,7 @@ export async function POST(request: NextRequest) {
 
     const accounts = body?.accounts;
     if (!Array.isArray(accounts) || accounts.length === 0) {
-        return NextResponse.json(
-            { error: 'Request body must include a non-empty "accounts" array.' },
-            { status: 400 }
-        );
+        return NextResponse.json({ error: 'Request body must include a non-empty "accounts" array.' }, { status: 400 });
     }
 
     const VALID_ROLES = ['kitchen_staff', 'kitchen_manager', 'admin'];
@@ -69,11 +58,45 @@ export async function POST(request: NextRequest) {
         }
     }
 
+    const adminAuth = getAdminAuth();
+    const results: { email: string; role: string; action: string }[] = [];
+
     try {
+        for (const account of accounts as { email: string; password: string; role: string }[]) {
+            let uid: string;
+            let action: string;
+
+            try {
+                // Update existing user
+                const existing = await adminAuth.getUserByEmail(account.email);
+                await adminAuth.updateUser(existing.uid, { password: account.password });
+                uid = existing.uid;
+                action = 'updated';
+            } catch (e: any) {
+                if (e?.code === 'auth/user-not-found') {
+                    // Create new user
+                    const created = await adminAuth.createUser({
+                        email: account.email,
+                        password: account.password,
+                        displayName: account.role,
+                    });
+                    uid = created.uid;
+                    action = 'created';
+                } else {
+                    throw e;
+                }
+            }
+
+            // Set role claim
+            await adminAuth.setCustomUserClaims(uid, { role: account.role });
+            results.push({ email: account.email, role: account.role, action });
+        }
+
+        // Write to Firestore for reference (not used for auth)
         await adminDb.collection('staff_credentials').doc('config').set({
-            accounts,
+            accounts: (accounts as any[]).map(a => ({ email: a.email, role: a.role })),
             setupAt: new Date().toISOString(),
-            note: 'Managed via Firebase Console. Change password field directly. Role must be kitchen_staff, kitchen_manager, or admin.',
+            note: 'Auth is handled by Firebase Authentication. Change passwords in Firebase Console → Authentication → Users.',
         });
 
         const batch = adminDb.batch();
@@ -83,12 +106,7 @@ export async function POST(request: NextRequest) {
         }
         await batch.commit();
 
-        return NextResponse.json({
-            success: true,
-            message: 'Staff credentials seeded in Firestore.',
-            accounts: (accounts as any[]).map((a) => ({ email: a.email, role: a.role })),
-            note: 'Passwords stored in Firestore → staff_credentials → config. Change them in Firebase Console.',
-        });
+        return NextResponse.json({ success: true, accounts: results });
 
     } catch (error: any) {
         console.error('[staff-setup] Error:', error?.message ?? error);
