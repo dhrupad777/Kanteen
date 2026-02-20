@@ -4,7 +4,7 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, Printer } from 'lucide-react';
+import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, Printer, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -195,6 +195,11 @@ export default function KitchenDashboardPage() {
                                 onChange={(e) => setSearchToken(e.target.value)}
                             />
                         </div>
+                        <Link href="/counter" title="Daily Menu Counter">
+                            <Button variant="outline" size="icon" className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-primary/20 hover:bg-primary/5">
+                                <EyeOff className="h-5 w-5 text-primary" />
+                            </Button>
+                        </Link>
                         <Link href="/staff/kitchen/print" className="relative">
                             <Button variant="outline" size="icon" className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-primary/20 hover:bg-primary/5">
                                 <Printer className="h-5 w-5 text-primary" />
@@ -309,9 +314,11 @@ export default function KitchenDashboardPage() {
                                                                 <Input
                                                                     placeholder="ENTER OTP"
                                                                     className="font-black text-center tracking-[0.5em] text-lg h-12 bg-slate-50 border-none"
-                                                                    maxLength={6}
+                                                                    maxLength={4}
+                                                                    inputMode="numeric"
+                                                                    pattern="[0-9]*"
                                                                     value={otpValue}
-                                                                    onChange={(e) => setOtpValue(e.target.value)}
+                                                                    onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ''))}
                                                                     autoFocus
                                                                 />
                                                                 <div className="flex gap-2">

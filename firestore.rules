@@ -147,5 +147,18 @@ service cloud.firestore {
       allow read: if isManager();
       allow write: if false; // Only via Admin SDK
     }
+
+    // ====== STAFF CREDENTIALS (server-side only) ======
+    // Stores plain-text email + password for /counter, /kitchen, /report login.
+    // Readable/writable ONLY via Firebase Admin SDK (API route: /api/auth/staff-login).
+    // Change passwords directly in Firebase Console → Firestore → staff_credentials → config.
+    match /staff_credentials/{docId} {
+      allow read, write: if false;
+    }
+
+    // ====== STAFF SESSIONS (reserved) ======
+    match /staff_sessions/{sessionId} {
+      allow read, write: if false;
+    }
   }
 }

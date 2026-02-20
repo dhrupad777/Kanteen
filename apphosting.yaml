@@ -82,3 +82,10 @@ env:
     value: kanteen_prod_secret_123
     availability:
       - RUNTIME
+
+  # Staff portal login gate — used by POST /api/auth/staff-setup (run once to seed credentials)
+  # After running setup, you can remove this variable or leave it for future use.
+  - variable: STAFF_SETUP_SECRET
+    value: kanteen_setup_2024
+    availability:
+      - RUNTIME
