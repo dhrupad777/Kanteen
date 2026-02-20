@@ -138,20 +138,19 @@ export function CouponGrid({ orders }: CouponGridProps) {
 
     try {
       if (order) {
-        await updateOrderStatus(order.id, 'PICKED_UP');
+        // Walk-in orders don't use OTP — deleting marks the coupon as collected
+        await deleteOrder(order.id);
       } else {
         await addOrder(couponId.toString());
       }
     } catch (error) {
       console.error('Error processing coupon action:', error);
     } finally {
-      // Clear loading state after a short delay to ensure smooth transition
-      // The actual state change will come from the Firestore listener
       setTimeout(() => {
         setLoading(couponId, false);
       }, 500);
     }
-  }, [addOrder, updateOrderStatus, setLoading]);
+  }, [addOrder, deleteOrder, setLoading]);
 
   const handleMouseDown = React.useCallback((couponId: number) => {
     const order = activeOrdersMapRef.current.get(couponId);
