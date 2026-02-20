@@ -1,25 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, getAdminAuth } from '@/lib/firebase-admin';
+import { adminDb } from '@/lib/firebase-admin';
 
 /**
  * POST /api/auth/staff-setup
  *
  * ONE-TIME SETUP ROUTE — seeds the initial Firestore credentials document.
- * Protected by STAFF_SETUP_SECRET env var so it can only be called once intentionally.
+ * Protected by STAFF_SETUP_SECRET env var.
  *
  * After running, manage credentials directly in Firebase Console:
  *   Firestore → staff_credentials → config → accounts array
  *
- * To change a password: update the `password` field in Firestore.
- * To add a new account: add an object to the `accounts` array.
- * To revoke access: set `enabled: false` or remove the account from the array.
+ * Request body:
+ * {
+ *   "accounts": [
+ *     { "email": "staff@kanteen.app", "password": "<choose>", "role": "kitchen_staff" },
+ *     { "email": "dhrupadrajpurohit@gmail.com", "password": "<choose>", "role": "kitchen_manager" }
+ *   ]
+ * }
  *
- * Default accounts created:
- *   - staff@kanteen.app    / Kanteen@2024  → role: kitchen_staff  (access to /counter and /kitchen)
- *   - dhrupadrajpurohit@gmail.com / Owner@2024 → role: kitchen_manager (access to /counter, /kitchen, /report)
+ * Example curl:
+ *   curl -X POST https://<host>/api/auth/staff-setup \
+ *     -H "Content-Type: application/json" \
+ *     -H "x-setup-secret: <STAFF_SETUP_SECRET>" \
+ *     -d '{"accounts":[{"email":"staff@kanteen.app","password":"<pass>","role":"kitchen_staff"},{"email":"dhrupadrajpurohit@gmail.com","password":"<pass>","role":"kitchen_manager"}]}'
  */
 export async function POST(request: NextRequest) {
-    // Guard with a secret so this can't be called accidentally
     const secret = request.headers.get('x-setup-secret');
     const expectedSecret = process.env.STAFF_SETUP_SECRET;
 
@@ -34,30 +39,45 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
-    const defaultAccounts = [
-        {
-            email: 'staff@kanteen.app',
-            password: 'Kanteen@2024',
-            role: 'kitchen_staff',
-        },
-        {
-            email: 'dhrupadrajpurohit@gmail.com',
-            password: 'Owner@2024',
-            role: 'kitchen_manager',
-        },
-    ];
+    let body: { accounts?: unknown };
+    try {
+        body = await request.json();
+    } catch {
+        return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    }
+
+    const accounts = body?.accounts;
+    if (!Array.isArray(accounts) || accounts.length === 0) {
+        return NextResponse.json(
+            { error: 'Request body must include a non-empty "accounts" array.' },
+            { status: 400 }
+        );
+    }
+
+    const VALID_ROLES = ['kitchen_staff', 'kitchen_manager', 'admin'];
+    for (const acc of accounts) {
+        if (
+            typeof acc !== 'object' || acc === null ||
+            typeof (acc as any).email !== 'string' ||
+            typeof (acc as any).password !== 'string' ||
+            !VALID_ROLES.includes((acc as any).role)
+        ) {
+            return NextResponse.json(
+                { error: 'Each account must have email (string), password (string), and a valid role.' },
+                { status: 400 }
+            );
+        }
+    }
 
     try {
-        // Write credentials to Firestore
         await adminDb.collection('staff_credentials').doc('config').set({
-            accounts: defaultAccounts,
+            accounts,
             setupAt: new Date().toISOString(),
             note: 'Managed via Firebase Console. Change password field directly. Role must be kitchen_staff, kitchen_manager, or admin.',
         });
 
-        // Also add emails to manager_allowlist for backward-compat with existing API routes
         const batch = adminDb.batch();
-        for (const account of defaultAccounts) {
+        for (const account of accounts as any[]) {
             const ref = adminDb.collection('manager_allowlist').doc(account.email.toLowerCase());
             batch.set(ref, { enabled: true, role: account.role }, { merge: true });
         }
@@ -66,8 +86,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             success: true,
             message: 'Staff credentials seeded in Firestore.',
-            accounts: defaultAccounts.map((a) => ({ email: a.email, role: a.role })),
-            note: 'Passwords stored as plain text in Firestore → staff_credentials → config. Change them in Firebase Console.',
+            accounts: (accounts as any[]).map((a) => ({ email: a.email, role: a.role })),
+            note: 'Passwords stored in Firestore → staff_credentials → config. Change them in Firebase Console.',
         });
 
     } catch (error: any) {
