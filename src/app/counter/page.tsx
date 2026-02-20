@@ -72,7 +72,7 @@ export default function CounterPage() {
         });
 
         return () => unsub();
-    }, [isAuthorized]);
+    }, [isAuthenticated]);
 
     const getEffective = useCallback((item: MenuItem): boolean => {
         const pending = pendingChanges.get(item.id);
