@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 // ESC/POS Commands
@@ -25,10 +25,81 @@ export interface BluetoothPrinter {
     name: string;
 }
 
+async function findWritableCharacteristic(server: BluetoothRemoteGATTServer): Promise<BluetoothRemoteGATTCharacteristic | null> {
+    const services = await server.getPrimaryServices();
+    for (const service of services) {
+        try {
+            const chars = await service.getCharacteristics();
+            for (const char of chars) {
+                if (char.properties.write || char.properties.writeWithoutResponse) {
+                    return char;
+                }
+            }
+        } catch {
+            // Some services don't expose characteristics — skip
+        }
+    }
+    return null;
+}
+
 export function usePrinter() {
     const { toast } = useToast();
     const [printer, setPrinter] = useState<BluetoothPrinter | null>(null);
     const [connecting, setConnecting] = useState(false);
+    const autoConnectAttemptedRef = useRef(false);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // AUTO-RECONNECT: On mount, try to reconnect to a previously granted
+    // device without requiring a user gesture.
+    // navigator.bluetooth.getDevices() returns devices the user already
+    // approved — works on Android Chrome without showing a picker.
+    // ─────────────────────────────────────────────────────────────────────
+    useEffect(() => {
+        if (autoConnectAttemptedRef.current) return;
+        autoConnectAttemptedRef.current = true;
+
+        async function tryAutoConnect() {
+            if (typeof navigator === 'undefined' || !navigator.bluetooth) return;
+            if (!('getDevices' in navigator.bluetooth)) return; // Not all browsers support this yet
+
+            try {
+                const devices: BluetoothDevice[] = await (navigator.bluetooth as any).getDevices();
+                if (devices.length === 0) return;
+
+                // Try each previously granted device until one connects
+                for (const device of devices) {
+                    try {
+                        const server = await device.gatt?.connect();
+                        if (!server) continue;
+
+                        const characteristic = await findWritableCharacteristic(server);
+                        if (!characteristic) continue;
+
+                        const newPrinter = { device, characteristic, name: device.name || 'Printer' };
+                        setPrinter(newPrinter);
+
+                        device.addEventListener('gattserverdisconnected', () => {
+                            setPrinter(null);
+                            toast({
+                                title: "Printer Disconnected",
+                                description: `${device.name || 'Printer'} disconnected`,
+                                variant: "destructive"
+                            });
+                        });
+
+                        toast({ title: "Printer reconnected", description: `Auto-connected to ${device.name || 'printer'}` });
+                        return; // Stop after first successful connection
+                    } catch {
+                        // Device not in range or failed — try next
+                    }
+                }
+            } catch {
+                // getDevices() failed silently — user will connect manually
+            }
+        }
+
+        tryAutoConnect();
+    }, [toast]);
 
     const connectBluetooth = async () => {
         if (!navigator.bluetooth) {
@@ -43,13 +114,12 @@ export function usePrinter() {
         setConnecting(true);
         try {
             const device = await navigator.bluetooth.requestDevice({
-                // Show ALL nearby Bluetooth devices so any printer model is visible
                 acceptAllDevices: true,
                 optionalServices: [
                     '000018f0-0000-1000-8000-00805f9b34fb',
                     '49535343-fe7d-4ae5-8fa9-9fafd205e455',
                     'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
-                    '00001101-0000-1000-8000-00805f9b34fb', // SPP (Serial Port Profile)
+                    '00001101-0000-1000-8000-00805f9b34fb',
                 ]
             });
 
@@ -58,24 +128,7 @@ export function usePrinter() {
             const server = await device.gatt?.connect();
             if (!server) throw new Error('Failed to connect to GATT server');
 
-            let characteristic: BluetoothRemoteGATTCharacteristic | null = null;
-            const services = await server.getPrimaryServices();
-
-            for (const service of services) {
-                try {
-                    const chars = await service.getCharacteristics();
-                    for (const char of chars) {
-                        if (char.properties.write || char.properties.writeWithoutResponse) {
-                            characteristic = char;
-                            break;
-                        }
-                    }
-                    if (characteristic) break;
-                } catch (e) {
-                    console.log('Service exploration failed:', e);
-                }
-            }
-
+            const characteristic = await findWritableCharacteristic(server);
             if (!characteristic) throw new Error('No writable characteristic found');
 
             const newPrinter = { device, characteristic, name: device.name || 'Unknown Printer' };
@@ -94,7 +147,6 @@ export function usePrinter() {
             return newPrinter;
 
         } catch (error: any) {
-            console.error('Bluetooth connection error:', error);
             if (error.name !== 'NotFoundError') {
                 toast({
                     title: "Connection Failed",
@@ -137,22 +189,48 @@ export function usePrinter() {
         receipt += ESCPOS.ALIGN_LEFT;
         job.items?.forEach((item: any) => {
             const qtyStr = `${item.qty || item.quantity}x`;
-            const name = item.name.length > 27 ? item.name.substring(0, 24) + '...' : item.name;
-            receipt += `${qtyStr.padEnd(4)} ${name}\n`;
+            const nameMaxWidth = 20;
+            const nameStr = item.name.length > nameMaxWidth ? item.name.substring(0, nameMaxWidth - 3) + '...' : item.name.padEnd(nameMaxWidth);
+            const price = item.price ? (item.price * (item.qty || item.quantity)) : 0;
+            const priceStr = price > 0 ? price.toString().padStart(5) : '    0';
+            receipt += `${qtyStr.padEnd(4)} ${nameStr} ${priceStr}\n`;
         });
 
-        if (job.note) {
+        receipt += line('-') + '\n';
+
+        // Platform convenience fee and Total
+        receipt += ESCPOS.ALIGN_LEFT;
+        receipt += `Platform Fee           Rs. 0\n`;
+        if (job.totalPrice) {
+            receipt += ESCPOS.BOLD_ON;
+            receipt += `Total                  Rs. ${job.totalPrice}\n`;
+            receipt += ESCPOS.BOLD_OFF;
+        }
+
+        if (job.note && job.note.trim() !== '') {
             receipt += line('-') + '\n';
             receipt += ESCPOS.BOLD_ON;
-            receipt += `NOTE: ${job.note}\n`;
+            receipt += `NOTE:\n${job.note}\n`;
             receipt += ESCPOS.BOLD_OFF;
         }
 
         receipt += line('-') + '\n';
 
-        receipt += ESCPOS.ALIGN_LEFT;
         if (job.customerName || job.userName) receipt += `Name: ${job.customerName || job.userName}\n`;
-        if (job.isParcel || job.type === 'takeaway') receipt += '*** PARCEL ***\n';
+
+        // PARCEL or DINE-IN in Big Words
+        receipt += line('-') + '\n';
+        receipt += ESCPOS.ALIGN_CENTER;
+        receipt += ESCPOS.DOUBLE_SIZE;
+        receipt += ESCPOS.BOLD_ON;
+        if (job.isParcel || job.type === 'takeaway') {
+            receipt += '*** PARCEL ***\n';
+        } else {
+            receipt += '*** DINE-IN ***\n';
+        }
+        receipt += ESCPOS.NORMAL_SIZE;
+        receipt += ESCPOS.BOLD_OFF;
+        receipt += line('-') + '\n';
 
         receipt += ESCPOS.ALIGN_CENTER;
         receipt += new Date().toLocaleString('en-IN', {
@@ -191,7 +269,6 @@ export function usePrinter() {
             }
             return true;
         } catch (error: any) {
-            console.error('Print error:', error);
             toast({
                 title: "Print Failed",
                 description: error.message || "Failed to send to printer",
@@ -201,100 +278,6 @@ export function usePrinter() {
         }
     };
 
-    const printSystemReceipt = (job: any, isAutoPrint = false): Promise<boolean> => {
-        return new Promise((resolve, reject) => {
-            try {
-                const printWindow = window.open('', '_blank', 'width=400,height=600');
-                if (!printWindow) {
-                    throw new Error("Pop-up blocked. Please allow pop-ups for auto-printing.");
-                }
-
-                const items = job.items || [];
-
-                const htmlContent = `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <title>Token ${job.token}</title>
-                        <style>
-                            body {
-                                font-family: 'Courier New', Courier, monospace;
-                                margin: 0;
-                                padding: 0;
-                                background-color: white;
-                                color: black;
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                            }
-                            .receipt {
-                                width: 80mm;
-                                padding: 5mm;
-                                box-sizing: border-box;
-                                font-size: 12px;
-                                line-height: 1.2;
-                            }
-                            .center { text-align: center; }
-                            .bold { font-weight: bold; }
-                            .divider { border-top: 1px dashed black; margin: 5px 0; }
-                            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-                            th, td { text-align: left; padding: 2px 0; }
-                            .right { text-align: right; }
-                            @media print {
-                                @page { size: 80mm auto; margin: 0; }
-                                body { margin: 0; padding: 0; display: block; }
-                                .receipt { width: 100%; padding: 0; margin: 0; }
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="receipt">
-                            <div class="center">
-                                <h2 style="margin: 0;">KANTEEN</h2>
-                                <h1 style="margin: 5px 0; font-size: 24px;">Token: ${job.token}</h1>
-                            </div>
-                            <div class="divider"></div>
-                            ${(job.customerName || job.userName) ? '<p style="margin: 5px 0;">Name: ' + (job.customerName || job.userName) + '</p>' : ''}
-                            ${(job.isParcel || job.type === 'takeaway') ? '<div class="center bold" style="font-size: 16px;">*** PARCEL ***</div>' : ''}
-                            <p style="margin: 0 0 5px 0;">Date: ${new Date().toLocaleString('en-IN')}</p>
-                            <div class="divider"></div>
-                            <table>
-                                <thead><tr><th>Item</th><th class="right">Qty</th></tr></thead>
-                                <tbody>
-                                    ${items.map((i: any) => '<tr><td>' + i.name + '</td><td class="right">' + (i.qty || i.quantity) + '</td></tr>').join('')}
-                                </tbody>
-                            </table>
-                            ${job.note ? '<div class="divider"></div><p class="bold">NOTE: ' + job.note + '</p>' : ''}
-                            <div class="divider"></div>
-                            <div class="center" style="margin-top: 10px;">
-                                <p class="bold">THANK YOU!</p>
-                                <br/><br/><br/>
-                            </div>
-                        </div>
-                        <script>
-                            window.onload = () => {
-                                window.print();
-                                ${isAutoPrint ? 'setTimeout(() => window.close(), 500);' : ''}
-                            };
-                        </script>
-                    </body>
-                    </html>
-                `;
-
-                printWindow.document.write(htmlContent);
-                printWindow.document.close();
-                resolve(true);
-            } catch (err: any) {
-                toast({
-                    title: "Print Failed",
-                    description: err.message || "Please check your pop-up blocker",
-                    variant: "destructive"
-                });
-                reject(err);
-            }
-        });
-    };
-
     return {
         printer,
         connecting,
@@ -302,6 +285,5 @@ export function usePrinter() {
         disconnectBluetooth,
         generateReceiptData,
         sendToBluetoothPrinter,
-        printSystemReceipt
     };
 }

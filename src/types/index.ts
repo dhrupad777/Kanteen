@@ -10,6 +10,7 @@ export interface Order {
   totalPrice: number;
   isParcel?: boolean;
   platformCharges?: number;
+  note?: string;
   token: number;
   otpHash: string;
   secretOtp?: string; // Plaintext OTP for display

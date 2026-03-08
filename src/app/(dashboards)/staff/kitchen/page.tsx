@@ -43,9 +43,19 @@ export default function KitchenDashboardPage() {
     const { printer, connectBluetooth, disconnectBluetooth, generateReceiptData, sendToBluetoothPrinter } = usePrinter();
 
     // Track which orders we've already sent to the printer
-    // so we don't reprint on re-renders or page focus
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
     const ordersInitializedRef = useRef(false);
+
+    // Keep refs to latest values so the auto-print effect always reads
+    // the live printer/autoPrint state, not a stale closure snapshot.
+    const printerRef = useRef(printer);
+    const autoPrintRef = useRef(autoPrint);
+    const generateReceiptDataRef = useRef(generateReceiptData);
+    const sendToBluetoothPrinterRef = useRef(sendToBluetoothPrinter);
+    useEffect(() => { printerRef.current = printer; }, [printer]);
+    useEffect(() => { autoPrintRef.current = autoPrint; }, [autoPrint]);
+    useEffect(() => { generateReceiptDataRef.current = generateReceiptData; }, [generateReceiptData]);
+    useEffect(() => { sendToBluetoothPrinterRef.current = sendToBluetoothPrinter; }, [sendToBluetoothPrinter]);
 
     // Persist auto-print setting
     useEffect(() => {
@@ -55,10 +65,8 @@ export default function KitchenDashboardPage() {
     // =====================================================================
     // AUTO-PRINT: Watch orders directly. When a new Preparing order appears
     // and Bluetooth is connected, send it straight to the printer.
-    // No queue, no claims, no complexity.
     // =====================================================================
     useEffect(() => {
-        // Wait until orders have loaded at least once
         if (ordersLoading) return;
 
         const preparingOrders = orders.filter(o =>
@@ -67,33 +75,34 @@ export default function KitchenDashboardPage() {
         );
 
         if (!ordersInitializedRef.current) {
-            // First load: mark all existing Preparing orders as "already seen"
+            // First load: mark all existing Preparing orders as already seen
             // so we don't reprint historical orders when the page opens
             ordersInitializedRef.current = true;
             preparingOrders.forEach(o => printedOrderIdsRef.current.add(o.id));
             return;
         }
 
-        // Find orders that are NEW since we last checked
         const newOrders = preparingOrders.filter(o => !printedOrderIdsRef.current.has(o.id));
         if (newOrders.length === 0) return;
 
-        // Mark them all as seen immediately to prevent double-printing
+        // Mark immediately to prevent double-printing
         newOrders.forEach(o => printedOrderIdsRef.current.add(o.id));
 
-        // Only print if auto-print is on AND Bluetooth printer is connected
-        if (!autoPrint || !printer) return;
+        // Read live values from refs — never stale
+        if (!autoPrintRef.current || !printerRef.current) return;
 
         newOrders.forEach(async (order) => {
             const job = {
                 token: order.token,
-                items: order.items.map(i => ({ name: i.name, qty: i.quantity, quantity: i.quantity })),
+                items: order.items.map(i => ({ name: i.name, qty: i.quantity, quantity: i.quantity, price: i.price })),
                 customerName: order.userName,
-                isParcel: false,
+                isParcel: order.isParcel || false,
+                note: order.note,
+                totalPrice: order.totalPrice,
+                platformCharges: order.platformCharges || 0,
             };
-
-            const receiptText = generateReceiptData(job);
-            const ok = await sendToBluetoothPrinter(receiptText);
+            const receiptText = generateReceiptDataRef.current(job);
+            const ok = await sendToBluetoothPrinterRef.current(receiptText);
             if (ok) {
                 toast({
                     title: `Printed Token ${order.token}`,
@@ -101,11 +110,7 @@ export default function KitchenDashboardPage() {
                 });
             }
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [orders, ordersLoading]);
-    // NOTE: autoPrint and printer are intentionally read from closure when
-    // orders change — we don't want to re-trigger on settings changes and
-    // accidentally re-print. They're always fresh because this fires on new orders.
+    }, [orders, ordersLoading, toast]);
 
     useEffect(() => {
         async function verifyManager() {
@@ -369,11 +374,14 @@ export default function KitchenDashboardPage() {
                                                 const job = {
                                                     token: 999,
                                                     items: [
-                                                        { name: 'Test Chai', qty: 2, quantity: 2 },
-                                                        { name: 'Test Sandwich', qty: 1, quantity: 1 },
+                                                        { name: 'Test Chai', qty: 2, quantity: 2, price: 15 },
+                                                        { name: 'Test Sandwich', qty: 1, quantity: 1, price: 40 },
                                                     ],
                                                     customerName: 'Test Customer',
-                                                    isParcel: false,
+                                                    isParcel: true,
+                                                    note: 'Make it spicy, no oil',
+                                                    totalPrice: 70,
+                                                    platformCharges: 0,
                                                 };
                                                 const receiptText = generateReceiptData(job);
                                                 const ok = await sendToBluetoothPrinter(receiptText);

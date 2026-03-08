@@ -93,6 +93,9 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
             otpHash: data.otpHash,
             secretOtp: data.secretOtp, // OTP for display when order is Ready
             totalPrice: data.totalPrice,
+            isParcel: data.isParcel,
+            platformCharges: data.platformCharges,
+            note: data.note,
             createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
             dateKey: data.dateKey,
             kitchen: data.kitchen,
