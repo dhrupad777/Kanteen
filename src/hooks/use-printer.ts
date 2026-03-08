@@ -168,79 +168,106 @@ export function usePrinter() {
     };
 
     const generateReceiptData = useCallback((job: any): string => {
-        const width = 32;
-        const line = (char: string = '-') => char.repeat(width);
-        let receipt = '';
+        // 32 chars = standard 58mm thermal paper width
+        const W = 32;
+        const divider = (char = '-') => char.repeat(W) + '\n';
 
-        receipt += ESCPOS.INIT;
-        receipt += ESCPOS.ALIGN_CENTER;
-        receipt += ESCPOS.BOLD_ON;
-        receipt += ESCPOS.DOUBLE_HEIGHT;
-        receipt += 'KANTEEN\n';
-        receipt += ESCPOS.NORMAL_SIZE;
+        // Right-align a value within a fixed total line width
+        const totalLine = (label: string, value: string) => {
+            const gap = W - label.length - value.length;
+            return label + ' '.repeat(Math.max(1, gap)) + value + '\n';
+        };
 
-        receipt += ESCPOS.DOUBLE_SIZE;
-        receipt += `${job.token}\n`;
-        receipt += ESCPOS.NORMAL_SIZE;
-        receipt += ESCPOS.BOLD_OFF;
+        let r = '';
 
-        receipt += line('-') + '\n';
+        // ── Header ───────────────────────────────────────────────
+        r += ESCPOS.INIT;
+        r += ESCPOS.ALIGN_CENTER;
+        r += ESCPOS.BOLD_ON + ESCPOS.DOUBLE_HEIGHT;
+        r += 'KANTEEN\n';
+        r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
 
-        receipt += ESCPOS.ALIGN_LEFT;
-        job.items?.forEach((item: any) => {
-            const qtyStr = `${item.qty || item.quantity}x`;
-            const nameMaxWidth = 20;
-            const nameStr = item.name.length > nameMaxWidth ? item.name.substring(0, nameMaxWidth - 3) + '...' : item.name.padEnd(nameMaxWidth);
-            const price = item.price ? (item.price * (item.qty || item.quantity)) : 0;
-            const priceStr = price > 0 ? price.toString().padStart(5) : '    0';
-            receipt += `${qtyStr.padEnd(4)} ${nameStr} ${priceStr}\n`;
+        // Token number — biggest thing on the receipt
+        r += ESCPOS.DOUBLE_SIZE + ESCPOS.BOLD_ON;
+        r += `TOKEN ${job.token}\n`;
+        r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
+
+        r += divider('=');
+
+        // ── Items ─────────────────────────────────────────────────
+        r += ESCPOS.ALIGN_LEFT;
+        (job.items || []).forEach((item: any) => {
+            const qty = item.qty || item.quantity || 1;
+            const unitPrice = item.price || 0;
+            const lineTotal = unitPrice * qty;
+            const qtyLabel = `${qty}x`;
+            const priceLabel = lineTotal > 0 ? `Rs.${lineTotal}` : '';
+
+            // Name gets whatever space is left between qty and price
+            const available = W - qtyLabel.length - 1 - priceLabel.length - 1;
+            const rawName = item.name || '';
+            const name = rawName.length > available
+                ? rawName.substring(0, available - 2) + '..'
+                : rawName.padEnd(available);
+
+            r += `${qtyLabel} ${name} ${priceLabel}\n`;
         });
 
-        receipt += line('-') + '\n';
+        r += divider();
 
-        // Platform convenience fee and Total
-        receipt += ESCPOS.ALIGN_LEFT;
-        receipt += `Platform Fee           Rs. 0\n`;
-        if (job.totalPrice) {
-            receipt += ESCPOS.BOLD_ON;
-            receipt += `Total                  Rs. ${job.totalPrice}\n`;
-            receipt += ESCPOS.BOLD_OFF;
+        // ── NOTE / Kitchen instructions — right after items ───────
+        // This is what the cook reads while preparing the order.
+        const note = (job.note || '').trim();
+        if (note) {
+            r += ESCPOS.BOLD_ON;
+            r += 'NOTE:\n';
+            r += ESCPOS.BOLD_OFF;
+            // Word-wrap note to fit within W chars
+            const words = note.split(' ');
+            let currentLine = '';
+            words.forEach((word: string) => {
+                if ((currentLine + ' ' + word).trim().length <= W) {
+                    currentLine = (currentLine + ' ' + word).trim();
+                } else {
+                    r += currentLine + '\n';
+                    currentLine = word;
+                }
+            });
+            if (currentLine) r += currentLine + '\n';
+            r += divider();
         }
 
-        if (job.note && job.note.trim() !== '') {
-            receipt += line('-') + '\n';
-            receipt += ESCPOS.BOLD_ON;
-            receipt += `NOTE:\n${job.note}\n`;
-            receipt += ESCPOS.BOLD_OFF;
-        }
+        // ── Billing ───────────────────────────────────────────────
+        r += ESCPOS.ALIGN_LEFT;
+        r += totalLine('Platform Fee', 'Rs. 0');
+        r += ESCPOS.BOLD_ON;
+        r += totalLine('TOTAL', `Rs. ${job.totalPrice || 0}`);
+        r += ESCPOS.BOLD_OFF;
 
-        receipt += line('-') + '\n';
+        r += divider();
 
-        if (job.customerName || job.userName) receipt += `Name: ${job.customerName || job.userName}\n`;
+        // ── Customer name ─────────────────────────────────────────
+        const name = job.customerName || job.userName || '';
+        if (name) r += `Name: ${name}\n`;
 
-        // PARCEL or DINE-IN in Big Words
-        receipt += line('-') + '\n';
-        receipt += ESCPOS.ALIGN_CENTER;
-        receipt += ESCPOS.DOUBLE_SIZE;
-        receipt += ESCPOS.BOLD_ON;
-        if (job.isParcel || job.type === 'takeaway') {
-            receipt += '*** PARCEL ***\n';
-        } else {
-            receipt += '*** DINE-IN ***\n';
-        }
-        receipt += ESCPOS.NORMAL_SIZE;
-        receipt += ESCPOS.BOLD_OFF;
-        receipt += line('-') + '\n';
+        // ── PARCEL / DINE-IN — large, unmissable ──────────────────
+        r += divider('=');
+        r += ESCPOS.ALIGN_CENTER;
+        r += ESCPOS.DOUBLE_SIZE + ESCPOS.BOLD_ON;
+        r += (job.isParcel || job.type === 'takeaway') ? 'PARCEL\n' : 'DINE-IN\n';
+        r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
+        r += divider('=');
 
-        receipt += ESCPOS.ALIGN_CENTER;
-        receipt += new Date().toLocaleString('en-IN', {
-            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+        // ── Timestamp ─────────────────────────────────────────────
+        r += ESCPOS.ALIGN_CENTER;
+        r += new Date().toLocaleString('en-IN', {
+            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
         }) + '\n';
 
-        receipt += ESCPOS.FEED;
-        receipt += ESCPOS.PARTIAL_CUT;
+        r += ESCPOS.FEED;
+        r += ESCPOS.PARTIAL_CUT;
 
-        return receipt;
+        return r;
     }, []);
 
     const sendToBluetoothPrinter = async (data: string, activePrinter = printer): Promise<boolean> => {
