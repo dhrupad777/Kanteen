@@ -37,8 +37,8 @@ export async function POST(
         if (!otp || typeof otp !== 'string') {
             return NextResponse.json({ error: 'OTP is required' }, { status: 400 });
         }
-        if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
-            return NextResponse.json({ error: 'Invalid OTP format. Must be 6 digits.' }, { status: 400 });
+        if (otp.length !== 4 || !/^\d{4}$/.test(otp)) {
+            return NextResponse.json({ error: 'Invalid OTP format. Must be 4 digits.' }, { status: 400 });
         }
         if (!orderId || typeof orderId !== 'string' || orderId.length > 100) {
             return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });

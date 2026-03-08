@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { useAuth } from '@/hooks/use-auth';
 import { useStaffAuth } from '@/hooks/use-staff-auth';
-import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, Printer, EyeOff, LogOut } from 'lucide-react';
+import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, EyeOff, LogOut } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,6 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { KitchenViewSkeleton } from '@/components/skeletons';
-import { usePrintQueueRealtime } from '@/hooks/use-print-queue-realtime';
 import { CouponGrid } from '@/components/coupon-grid';
 import { CouponEntryForm } from '@/components/coupon-entry-form';
 import Link from 'next/link';
@@ -28,8 +27,6 @@ export default function KitchenPage() {
     const [verifyingOtp, setVerifyingOtp] = useState<string | null>(null);
     const [otpValue, setOtpValue] = useState('');
     const { toast } = useToast();
-
-    const { pendingCount: printQueueCount } = usePrintQueueRealtime({ autoStart: true });
 
     // ── Online orders only (Razorpay-paid, token 201–999) ───────────────────
     const onlineOrders = orders.filter(o =>
@@ -145,16 +142,6 @@ export default function KitchenPage() {
                             <Button variant="outline" size="icon" className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-primary/20 hover:bg-primary/5">
                                 <EyeOff className="h-5 w-5 text-primary" />
                             </Button>
-                        </Link>
-                        <Link href="/staff/kitchen/print" className="relative">
-                            <Button variant="outline" size="icon" className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-primary/20 hover:bg-primary/5">
-                                <Printer className="h-5 w-5 text-primary" />
-                            </Button>
-                            {printQueueCount > 0 && (
-                                <Badge className="absolute -top-1 -right-1 px-1.5 py-0 min-w-[1.25rem] h-5 flex items-center justify-center bg-red-500 hover:bg-red-600 text-[10px] font-black border-none ring-2 ring-white shadow-sm animate-pulse">
-                                    {printQueueCount}
-                                </Badge>
-                            )}
                         </Link>
                         <Button
                             variant="outline"

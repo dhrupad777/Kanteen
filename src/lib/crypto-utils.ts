@@ -37,11 +37,11 @@ export function hashOTP(otp: string, salt?: string): string {
 }
 
 /**
- * Generate a cryptographically secure 6-digit OTP
+ * Generate a cryptographically secure 4-digit OTP
  */
 export function generateSecureOTP(): string {
     // Use crypto.randomInt for cryptographically secure random number
-    const otp = crypto.randomInt(100000, 999999);
+    const otp = crypto.randomInt(1000, 9999);
     return otp.toString();
 }
 

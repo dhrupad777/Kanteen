@@ -37,85 +37,76 @@ export function Receipt({ job, showPrintButton = false, onPrint }: ReceiptProps)
                         top: 0;
                         width: 80mm;
                         font-family: 'Courier New', monospace;
-                        font-size: 12px;
+                        font-size: 14px;
+                        line-height: 1.2;
+                        padding: 0;
+                        margin: 0;
+                        box-shadow: none;
+                        border: none;
                     }
+                    @page { margin: 0; size: 80mm auto; }
                     .no-print {
                         display: none !important;
                     }
                 }
             `}</style>
 
-            <div className="receipt-content bg-white p-4 max-w-[300px] mx-auto border border-gray-200 shadow-sm rounded font-mono text-sm">
+            <div className="receipt-content bg-white p-2 max-w-[300px] mx-auto border border-gray-200 shadow-sm rounded font-mono text-sm">
                 {/* Header */}
-                <div className="text-center mb-4 border-b border-dashed border-gray-400 pb-3">
-                    <h1 className="text-xl font-bold">KANTEEN</h1>
-                    <p className="text-xs text-gray-600">Order Receipt</p>
+                <div className="text-center mb-1">
+                    <h1 className="text-2xl font-bold">KANTEEN</h1>
                 </div>
 
                 {/* Token Number - Large and prominent */}
-                <div className="text-center my-4 py-3 bg-gray-100 rounded">
-                    <p className="text-xs text-gray-600 uppercase tracking-wider">Token Number</p>
-                    <p className="text-5xl font-black text-primary">{job.token}</p>
+                <div className="text-center my-1">
+                    <p className="text-4xl font-black">{job.token}</p>
                 </div>
 
-                {/* Customer Info */}
-                {(job.customerName || job.customerEmail) && (
-                    <div className="mb-3 text-xs">
-                        {job.customerName && (
-                            <p><span className="text-gray-500">Name:</span> {job.customerName}</p>
-                        )}
-                    </div>
-                )}
-
-                {/* Order Type */}
-                {job.isParcel && (
-                    <div className="text-center mb-3">
-                        <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded text-xs font-bold uppercase">
-                            Parcel Order
-                        </span>
-                    </div>
-                )}
+                {/* Divider */}
+                <div className="border-t border-dashed border-black my-2"></div>
 
                 {/* Order Items */}
-                <div className="border-t border-dashed border-gray-400 pt-3 mb-3">
-                    <table className="w-full text-xs">
-                        <thead>
-                            <tr className="border-b border-gray-300">
-                                <th className="text-left py-1">Item</th>
-                                <th className="text-center py-1">Qty</th>
-                                <th className="text-right py-1">Price</th>
-                            </tr>
-                        </thead>
+                <div className="mb-2">
+                    <table className="w-full text-sm">
                         <tbody>
                             {job.items.map((item, index) => (
-                                <tr key={index} className="border-b border-gray-200">
-                                    <td className="py-1 pr-2">{item.name}</td>
-                                    <td className="text-center py-1">{item.quantity}</td>
-                                    <td className="text-right py-1">₹{item.price.toFixed(2)}</td>
+                                <tr key={index} className="align-top">
+                                    <td className="pr-2 font-bold w-6">{item.quantity}x</td>
+                                    <td className="text-left leading-tight">{item.name}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
 
-                {/* Total */}
-                <div className="border-t border-double border-gray-400 pt-2 mb-4">
-                    <div className="flex justify-between font-bold text-base">
-                        <span>TOTAL</span>
-                        <span>₹{job.totalPrice.toFixed(2)}</span>
+                {job.note && (
+                    <>
+                        <div className="border-t border-dashed border-black my-2"></div>
+                        <div className="font-bold text-sm">NOTE: {job.note}</div>
+                    </>
+                )}
+
+                <div className="border-t border-dashed border-black my-2"></div>
+
+                {/* Customer Info */}
+                {(job.customerName || job.customerEmail) && (
+                    <div className="text-sm">
+                        {job.customerName && (
+                            <p>Name: {job.customerName}</p>
+                        )}
                     </div>
-                </div>
+                )}
+
+                {/* Order Type */}
+                {job.isParcel && (
+                    <div className="text-center font-bold text-sm my-1">
+                        *** PARCEL ***
+                    </div>
+                )}
 
                 {/* Timestamp */}
-                <div className="text-center text-xs text-gray-500 border-t border-dashed border-gray-400 pt-3">
-                    <p>{format(job.createdAt, 'dd MMM yyyy, hh:mm a')}</p>
-                    <p className="mt-1">Order ID: {job.orderId.slice(-8)}</p>
-                </div>
-
-                {/* Footer */}
-                <div className="text-center mt-4 text-xs text-gray-500">
-                    <p>Thank you for your order!</p>
-                    <p className="text-[10px] mt-1">Please show this receipt when collecting</p>
+                <div className="text-center text-[11px] mt-2">
+                    <p>{format(job.createdAt, 'dd MMM yyyy, HH:mm')}</p>
                 </div>
             </div>
 

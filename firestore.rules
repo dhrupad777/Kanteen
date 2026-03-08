@@ -93,8 +93,8 @@ service cloud.firestore {
 
     // ====== PRINT JOBS ======
     match /print_jobs/{jobId} {
-      allow read: if isAdmin();
-      allow write: if false; // Only via Admin SDK
+      allow read: if isManager(); // Kitchen staff need real-time listener access
+      allow write: if false; // Only via Admin SDK (claim/complete/fail go through API routes)
     }
 
     // ====== METADATA ======

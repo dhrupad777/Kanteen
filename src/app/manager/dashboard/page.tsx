@@ -386,17 +386,17 @@ export default function ManagerDashboardPage() {
                                                         {sectionItems.filter(i => getEffective(i)).length}/{sectionItems.length}
                                                     </span>
                                                     {pendingInSection > 0 && (
-                                                        <Badge className="h-4 text-[10px] bg-orange-100 text-orange-700 border-0 px-1.5 py-0">
+                                                        <Badge className="h-4 text-xs bg-orange-100 text-orange-700 border-0 px-1.5 py-0">
                                                             {pendingInSection} pending
                                                         </Badge>
                                                     )}
                                                     {state === "none" && (
-                                                        <Badge className="h-4 text-[10px] bg-red-100 text-red-600 border-0 px-1.5 py-0">
+                                                        <Badge className="h-4 text-xs bg-red-100 text-red-600 border-0 px-1.5 py-0">
                                                             Section Off
                                                         </Badge>
                                                     )}
                                                     {state === "partial" && (
-                                                        <Badge className="h-4 text-[10px] bg-yellow-100 text-yellow-700 border-0 px-1.5 py-0">
+                                                        <Badge className="h-4 text-xs bg-yellow-100 text-yellow-700 border-0 px-1.5 py-0">
                                                             Partial
                                                         </Badge>
                                                     )}

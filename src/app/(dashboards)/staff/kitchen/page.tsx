@@ -1,21 +1,22 @@
 "use client";
 
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, Printer, EyeOff } from 'lucide-react';
+import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, Printer, EyeOff, Bluetooth, AlertCircle } from 'lucide-react';
+
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { checkManagerAllowlist } from '@/lib/auth';
 import { KitchenViewSkeleton } from '@/components/skeletons';
-import { usePrintQueueRealtime } from '@/hooks/use-print-queue-realtime';
+import { usePrinter } from '@/hooks/use-printer';
 import Link from 'next/link';
 
 // Lazy load ReportsManager as it's heavy and not immediately needed
@@ -31,10 +32,80 @@ export default function KitchenDashboardPage() {
     const [otpValue, setOtpValue] = useState('');
     const { toast } = useToast();
 
-    // Real-time print queue count (auto-starts when authorized)
-    const { pendingCount: printQueueCount } = usePrintQueueRealtime({
-        autoStart: true,
+    const [printMethod, setPrintMethod] = useState<'bluetooth'>(() => 'bluetooth');
+    const [autoPrint, setAutoPrint] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        const saved = localStorage.getItem('kanteen_auto_print');
+        return saved === null ? true : saved === 'true';
     });
+
+    // Printer hook
+    const { printer, connectBluetooth, disconnectBluetooth, generateReceiptData, sendToBluetoothPrinter } = usePrinter();
+
+    // Track which orders we've already sent to the printer
+    // so we don't reprint on re-renders or page focus
+    const printedOrderIdsRef = useRef<Set<string>>(new Set());
+    const ordersInitializedRef = useRef(false);
+
+    // Persist auto-print setting
+    useEffect(() => {
+        localStorage.setItem('kanteen_auto_print', String(autoPrint));
+    }, [autoPrint]);
+
+    // =====================================================================
+    // AUTO-PRINT: Watch orders directly. When a new Preparing order appears
+    // and Bluetooth is connected, send it straight to the printer.
+    // No queue, no claims, no complexity.
+    // =====================================================================
+    useEffect(() => {
+        // Wait until orders have loaded at least once
+        if (ordersLoading) return;
+
+        const preparingOrders = orders.filter(o =>
+            o.status === 'Preparing' &&
+            o.token && o.token >= 201
+        );
+
+        if (!ordersInitializedRef.current) {
+            // First load: mark all existing Preparing orders as "already seen"
+            // so we don't reprint historical orders when the page opens
+            ordersInitializedRef.current = true;
+            preparingOrders.forEach(o => printedOrderIdsRef.current.add(o.id));
+            return;
+        }
+
+        // Find orders that are NEW since we last checked
+        const newOrders = preparingOrders.filter(o => !printedOrderIdsRef.current.has(o.id));
+        if (newOrders.length === 0) return;
+
+        // Mark them all as seen immediately to prevent double-printing
+        newOrders.forEach(o => printedOrderIdsRef.current.add(o.id));
+
+        // Only print if auto-print is on AND Bluetooth printer is connected
+        if (!autoPrint || !printer) return;
+
+        newOrders.forEach(async (order) => {
+            const job = {
+                token: order.token,
+                items: order.items.map(i => ({ name: i.name, qty: i.quantity, quantity: i.quantity })),
+                customerName: order.userName,
+                isParcel: false,
+            };
+
+            const receiptText = generateReceiptData(job);
+            const ok = await sendToBluetoothPrinter(receiptText);
+            if (ok) {
+                toast({
+                    title: `Printed Token ${order.token}`,
+                    description: order.userName ? `Order for ${order.userName}` : 'Sent to Bluetooth printer',
+                });
+            }
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [orders, ordersLoading]);
+    // NOTE: autoPrint and printer are intentionally read from closure when
+    // orders change — we don't want to re-trigger on settings changes and
+    // accidentally re-print. They're always fresh because this fires on new orders.
 
     useEffect(() => {
         async function verifyManager() {
@@ -70,15 +141,11 @@ export default function KitchenDashboardPage() {
 
     const [loadingOrders, setLoadingOrders] = useState<Set<string>>(new Set());
 
-    // Helper to set loading state
     const setOrderLoading = (orderId: string, isLoading: boolean) => {
         setLoadingOrders(prev => {
             const next = new Set(prev);
-            if (isLoading) {
-                next.add(orderId);
-            } else {
-                next.delete(orderId);
-            }
+            if (isLoading) next.add(orderId);
+            else next.delete(orderId);
             return next;
         });
     };
@@ -103,10 +170,7 @@ export default function KitchenDashboardPage() {
                 throw new Error(data.error || 'Failed to update status');
             }
 
-            toast({
-                title: "Status Updated",
-                description: `Order is now ${newStatus}`,
-            });
+            toast({ title: "Status Updated", description: `Order is now ${newStatus}` });
         } catch (error: any) {
             toast({
                 title: "Error",
@@ -114,16 +178,12 @@ export default function KitchenDashboardPage() {
                 variant: "destructive",
             });
         } finally {
-            // Small buffer to prevent glitching
-            setTimeout(() => {
-                setOrderLoading(orderId, false);
-            }, 500);
+            setTimeout(() => setOrderLoading(orderId, false), 500);
         }
     }
 
     async function handleVerifyOtp(orderId: string) {
         if (!otpValue) return;
-
         setOrderLoading(orderId, true);
         try {
             const token = await user?.getIdToken();
@@ -143,10 +203,7 @@ export default function KitchenDashboardPage() {
                 throw new Error(data.error || 'Failed to verify OTP');
             }
 
-            toast({
-                title: "Success",
-                description: "Order picked up successfully",
-            });
+            toast({ title: "Success", description: "Order picked up successfully" });
             setVerifyingOtp(null);
             setOtpValue('');
         } catch (error: any) {
@@ -156,10 +213,7 @@ export default function KitchenDashboardPage() {
                 variant: "destructive",
             });
         } finally {
-            // Small buffer to prevent glitching
-            setTimeout(() => {
-                setOrderLoading(orderId, false);
-            }, 500);
+            setTimeout(() => setOrderLoading(orderId, false), 500);
         }
     }
 
@@ -200,38 +254,140 @@ export default function KitchenDashboardPage() {
                                 <EyeOff className="h-5 w-5 text-primary" />
                             </Button>
                         </Link>
-                        <Link href="/staff/kitchen/print" className="relative">
-                            <Button variant="outline" size="icon" className="h-10 w-10 md:h-11 md:w-11 shrink-0 border-primary/20 hover:bg-primary/5">
-                                <Printer className="h-5 w-5 text-primary" />
-                            </Button>
-                            {printQueueCount > 0 && (
-                                <Badge className="absolute -top-1 -right-1 px-1.5 py-0 min-w-[1.25rem] h-5 flex items-center justify-center bg-red-500 hover:bg-red-600 text-[10px] font-black border-none ring-2 ring-white shadow-sm animate-pulse">
-                                    {printQueueCount}
-                                </Badge>
-                            )}
-                        </Link>
+                        {/* Bluetooth status indicator */}
+                        <div className={cn(
+                            "h-10 w-10 md:h-11 md:w-11 flex items-center justify-center rounded-md border",
+                            printer
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                                : "border-slate-200 bg-white text-slate-400"
+                        )} title={printer ? `Connected: ${printer.name}` : 'No printer connected'}>
+                            <Bluetooth className="h-5 w-5" />
+                        </div>
                     </div>
                 </div>
             </header>
 
             <main className="container mx-auto p-4 md:p-6">
                 <Tabs defaultValue="Preparing" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 mb-6 bg-slate-100/50 p-1 h-auto gap-1">
-                        <TabsTrigger value="Preparing" className="relative py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                            <span className="text-xs md:text-sm font-black">PREPARING</span>
+                    <TabsList className="grid w-full grid-cols-4 mb-6 bg-slate-100/50 p-1 h-auto gap-1">
+                        <TabsTrigger value="Preparing" className="relative py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                            <span className="text-[11px] sm:text-xs md:text-sm font-black">
+                                <span className="sm:hidden">PREP</span>
+                                <span className="hidden sm:inline">PREPARING</span>
+                            </span>
                             {ordersByStatus.Preparing.length > 0 && (
-                                <Badge className="ml-1 md:ml-2 px-1.5 py-0 min-w-[1.25rem] h-5 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-[10px] font-black border-none ring-2 ring-white dark:ring-slate-900 shadow-sm">
+                                <span className="ml-1 min-w-[1.1rem] h-4 inline-flex items-center justify-center rounded-full bg-blue-500 text-white text-[10px] font-black px-1">
                                     {ordersByStatus.Preparing.length}
-                                </Badge>
+                                </span>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="Ready" className="py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                            <span className="text-xs md:text-sm font-black uppercase">Ready</span>
+                        <TabsTrigger value="Ready" className="py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                            <span className="text-[11px] sm:text-xs md:text-sm font-black uppercase">Ready</span>
                         </TabsTrigger>
-                        <TabsTrigger value="Reports" className="py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                            <span className="text-xs md:text-sm font-black uppercase">Reports</span>
+                        <TabsTrigger value="Reports" className="py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                            <span className="text-[11px] sm:text-xs md:text-sm font-black uppercase">
+                                <span className="sm:hidden">Rep</span>
+                                <span className="hidden sm:inline">Reports</span>
+                            </span>
+                        </TabsTrigger>
+                        <TabsTrigger value="Printer" className="py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm flex gap-1 items-center">
+                            <Printer className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-[11px] sm:text-xs md:text-sm font-black uppercase hidden sm:block">Print</span>
                         </TabsTrigger>
                     </TabsList>
+
+                    <TabsContent value="Printer">
+                        <div className="max-w-2xl mx-auto py-4 space-y-4">
+                            <Card className="border-none shadow-sm">
+                                <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+                                    <h3 className="font-black text-lg">Bluetooth Auto-Print</h3>
+                                    <p className="text-xs text-muted-foreground">
+                                        When a new order enters the Preparing section, it prints automatically to the connected Bluetooth printer.
+                                        Keep this page open on the Android device near the printer.
+                                    </p>
+                                </CardHeader>
+                                <CardContent className="pt-4 space-y-6">
+
+                                    {/* Auto-print toggle */}
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <Printer className="h-5 w-5 text-primary" />
+                                            <div>
+                                                <p className="font-bold">Auto-Print Orders</p>
+                                                <p className="text-xs text-muted-foreground">Prints token immediately when a new order arrives</p>
+                                            </div>
+                                        </div>
+                                        <Switch checked={autoPrint} onCheckedChange={setAutoPrint} />
+                                    </div>
+
+                                    {/* Bluetooth connection */}
+                                    <div className="flex items-center justify-between py-4 border-y border-slate-100 dark:border-slate-800">
+                                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                                            <div className={cn("p-2 rounded-lg w-fit", printer ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500")}>
+                                                <Bluetooth className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold">Bluetooth Printer</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {printer ? `Connected: ${printer.name}` : 'No printer connected — tap Connect'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            onClick={printer ? disconnectBluetooth : connectBluetooth}
+                                            variant={printer ? "outline" : "default"}
+                                            className={cn(printer ? "text-red-500 border-red-200 hover:bg-red-50" : "bg-blue-600 hover:bg-blue-700")}
+                                        >
+                                            {printer ? 'Disconnect' : 'Connect Bluetooth'}
+                                        </Button>
+                                    </div>
+
+                                    {/* Status summary */}
+                                    <div className={cn(
+                                        "p-4 rounded-xl text-sm border",
+                                        printer && autoPrint
+                                            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                            : "bg-amber-50 border-amber-200 text-amber-800"
+                                    )}>
+                                        <p className="font-bold mb-1 flex items-center gap-1.5">
+                                            <AlertCircle className="w-4 h-4" />
+                                            {printer && autoPrint ? 'Ready to print' : 'Not printing'}
+                                        </p>
+                                        <p className="text-xs">
+                                            {!printer && 'Connect a Bluetooth printer above. '}
+                                            {!autoPrint && 'Enable Auto-Print above. '}
+                                            {printer && autoPrint && `Connected to "${printer.name}". New orders will print automatically when they appear in the Preparing tab.`}
+                                        </p>
+                                    </div>
+
+                                    {/* Manual test print */}
+                                    {printer && (
+                                        <Button
+                                            variant="outline"
+                                            className="w-full font-bold"
+                                            onClick={async () => {
+                                                const job = {
+                                                    token: 999,
+                                                    items: [
+                                                        { name: 'Test Chai', qty: 2, quantity: 2 },
+                                                        { name: 'Test Sandwich', qty: 1, quantity: 1 },
+                                                    ],
+                                                    customerName: 'Test Customer',
+                                                    isParcel: false,
+                                                };
+                                                const receiptText = generateReceiptData(job);
+                                                const ok = await sendToBluetoothPrinter(receiptText);
+                                                if (ok) toast({ title: "Test print sent!", description: "Check your printer for Token 999" });
+                                            }}
+                                        >
+                                            <Printer className="h-4 w-4 mr-2" />
+                                            Send Test Print
+                                        </Button>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </TabsContent>
 
                     <TabsContent value="Reports">
                         <Suspense fallback={
@@ -262,13 +418,13 @@ export default function KitchenDashboardPage() {
                                                     {order.token}
                                                 </span>
                                                 {order.userName && (
-                                                    <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight truncate max-w-[120px] leading-tight">
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-tight truncate max-w-[160px] leading-tight">
                                                         {order.userName.split(' ')[0]}
                                                     </span>
                                                 )}
-                                                <Badge variant="secondary" className="w-fit text-[10px] font-black uppercase tracking-tighter mt-1">
+                                                <span className="w-fit text-xs font-black uppercase tracking-tighter mt-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full text-slate-500">
                                                     {formatDistanceToNow(order.createdAt)} ago
-                                                </Badge>
+                                                </span>
                                             </div>
                                             <div className={cn(
                                                 "p-2 rounded-lg",
@@ -284,13 +440,12 @@ export default function KitchenDashboardPage() {
                                                 {order.items.map((item, i) => (
                                                     <div key={i} className="flex justify-between items-center text-xs">
                                                         <span className="font-bold">{item.name}</span>
-                                                        <span className="font-black bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">x{item.quantity}</span>
+                                                        <span className="font-black bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">x{item.quantity}</span>
                                                     </div>
                                                 ))}
                                             </div>
 
                                             <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-
                                                 {status === 'Preparing' && (
                                                     <Button
                                                         onClick={() => handleStatusUpdate(order.id, 'Ready')}
@@ -313,7 +468,7 @@ export default function KitchenDashboardPage() {
                                                             <div className="flex flex-col gap-2 p-2 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-800">
                                                                 <Input
                                                                     placeholder="ENTER OTP"
-                                                                    className="font-black text-center tracking-[0.5em] text-lg h-12 bg-slate-50 border-none"
+                                                                    className="font-black text-center tracking-[0.25em] sm:tracking-[0.5em] text-lg h-12 bg-slate-50 border-none"
                                                                     maxLength={4}
                                                                     inputMode="numeric"
                                                                     pattern="[0-9]*"
@@ -327,19 +482,15 @@ export default function KitchenDashboardPage() {
                                                                         disabled={loadingOrders.has(order.id)}
                                                                         className="flex-grow bg-emerald-600 hover:bg-emerald-700 font-black disabled:opacity-70 disabled:cursor-wait"
                                                                     >
-                                                                        {loadingOrders.has(order.id) ? (
-                                                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                                                        ) : (
-                                                                            "VERIFY"
-                                                                        )}
+                                                                        {loadingOrders.has(order.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : "VERIFY"}
                                                                     </Button>
                                                                     <Button
                                                                         variant="ghost"
                                                                         onClick={() => setVerifyingOtp(null)}
                                                                         disabled={loadingOrders.has(order.id)}
-                                                                        className="px-3"
+                                                                        className="h-10 w-10 px-0 shrink-0"
                                                                     >
-                                                                        X
+                                                                        ✕
                                                                     </Button>
                                                                 </div>
                                                             </div>

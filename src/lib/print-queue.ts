@@ -186,3 +186,77 @@ export async function retryDeadLetterJob(jobId: string): Promise<void> {
         error: FieldValue.delete(),
     });
 }
+
+/**
+ * Recover stale print jobs.
+ * 
+ * When the printer loses power or disconnects mid-print, jobs get stuck
+ * in 'printing' state forever. This function finds jobs that have been
+ * in 'printing' for more than `staleThresholdMs` and resets them to 'queued'.
+ * 
+ * This is CRITICAL for ACID-like guarantees:
+ *   Payment confirmed → print job created (atomic via transaction)
+ *   Print job stuck → recovered automatically → eventually printed
+ * 
+ * @param staleThresholdMs - How long before a 'printing' job is considered stale (default: 2 min)
+ * @returns Number of jobs recovered
+ */
+export async function recoverStaleJobs(staleThresholdMs: number = 120_000): Promise<number> {
+    const db = getAdminDb();
+    const cutoff = new Date(Date.now() - staleThresholdMs);
+
+    // Find jobs stuck in 'printing' with lastAttemptAt older than cutoff
+    const snapshot = await db
+        .collection('print_jobs')
+        .where('status', '==', 'printing')
+        .get();
+
+    let recoveredCount = 0;
+
+    for (const doc of snapshot.docs) {
+        const data = doc.data();
+        const lastAttempt = data.lastAttemptAt?.toDate?.() || data.createdAt?.toDate?.();
+
+        // If no timestamp or timestamp is before cutoff, it's stale
+        if (!lastAttempt || lastAttempt < cutoff) {
+            const attempts = (data.attempts || 0);
+            const maxAttempts = data.maxAttempts || 5;
+
+            // If under max attempts, re-queue. Otherwise dead-letter it.
+            const newStatus: PrintJobStatus = attempts >= maxAttempts ? 'dead_letter' : 'queued';
+
+            await doc.ref.update({
+                status: newStatus,
+                error: newStatus === 'dead_letter'
+                    ? 'Exceeded max attempts after stale recovery'
+                    : `Recovered from stale 'printing' state`,
+                printerId: FieldValue.delete(),
+            });
+
+            recoveredCount++;
+        }
+    }
+
+    return recoveredCount;
+}
+
+/**
+ * Get all jobs that need attention: queued (waiting) + failed (need retry).
+ * Used by the kitchen print UI to show full queue state.
+ */
+export async function getFailedAndQueuedJobs(limitCount: number = 50): Promise<PrintJob[]> {
+    const db = getAdminDb();
+
+    // Firestore 'in' query allows up to 10 values
+    const snapshot = await db
+        .collection('print_jobs')
+        .where('status', 'in', ['queued', 'failed', 'dead_letter'])
+        .orderBy('createdAt', 'asc')
+        .limit(limitCount)
+        .get();
+
+    return snapshot.docs.map(doc => ({
+        jobId: doc.id,
+        ...doc.data(),
+    } as PrintJob));
+}

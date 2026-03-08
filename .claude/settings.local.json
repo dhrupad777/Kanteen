@@ -9,7 +9,8 @@
       "Bash(git push:*)",
       "Bash(git commit:*)",
       "Bash(node scripts/test-order-flow.cjs:*)",
-      "Bash(node scripts/test-crypto-local.cjs:*)"
+      "Bash(node scripts/test-crypto-local.cjs:*)",
+      "Bash(firebase deploy:*)"
     ]
   }
 }

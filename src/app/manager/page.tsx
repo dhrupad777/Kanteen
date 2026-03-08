@@ -18,8 +18,8 @@ export default function ManagerLoginPage() {
     // Auto-redirect when in test mode
     useEffect(() => {
         if (BYPASS_AUTH) {
-            console.log("🔓 AUTH BYPASS: Auto-redirecting to /staff");
-            router.push("/staff");
+            console.log("🔓 AUTH BYPASS: Auto-redirecting to /manager/dashboard");
+            router.push("/manager/dashboard");
         }
     }, [router]);
 
@@ -37,7 +37,7 @@ export default function ManagerLoginPage() {
                         name: googleUser.displayName || "",
                         email: googleUser.email
                     });
-                    router.push("/staff");
+                    router.push("/manager/dashboard");
                 } else {
                     setError("Access Denied: Your email is not on the manager allowlist.");
                     await signOut();

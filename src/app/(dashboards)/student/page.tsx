@@ -151,7 +151,7 @@ function DashboardSection({
             <span>{title} ({orders.length})</span>
           </div>
           {title === "My Orders" && (
-            <span className="text-[10px] font-medium text-muted-foreground italic normal-case flex items-center gap-1">
+            <span className="text-xs font-medium text-muted-foreground italic normal-case flex items-center gap-1">
               Tap for summary
             </span>
           )}

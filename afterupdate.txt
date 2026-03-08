@@ -1,0 +1,9 @@
+curl -X POST https://kanteen-mrc-live.web.app/api/auth/staff-setup \
+  -H "Content-Type: application/json" \
+  -H "x-setup-secret: kanteen_setup_2024" \
+  -d '{
+    "accounts": [
+      {"email": "staff@kanteen.app", "password": "YOUR_NEW_STAFF_PASS", "role": "kitchen_staff"},
+      {"email": "dhrupadrajpurohit@gmail.com", "password": "YOUR_NEW_OWNER_PASS", "role": "kitchen_manager"}
+    ]
+  }'

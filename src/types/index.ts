@@ -138,6 +138,7 @@ export interface PrintJob {
   totalPrice: number;
   customerName?: string;
   customerEmail?: string;
+  note?: string;
   isParcel?: boolean;
   status: PrintJobStatus;
   createdAt: Date;

@@ -13,7 +13,9 @@ import {
     AlertCircle,
     Loader2,
     Package,
-    ArrowLeft
+    ArrowLeft,
+    RefreshCw,
+    RotateCcw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -66,11 +68,19 @@ export default function KitchenPrintPage() {
     const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
 
     // Printer state
+    const [printMethod, setPrintMethod] = useState<'system' | 'bluetooth'>(() => {
+        if (typeof window === 'undefined') return 'system';
+        return (localStorage.getItem('kanteen_print_method') as 'system' | 'bluetooth') || 'system';
+    });
     const [printer, setPrinter] = useState<BluetoothPrinter | null>(null);
     const [connecting, setConnecting] = useState(false);
 
     // Settings
-    const [autoPrint, setAutoPrint] = useState(false);
+    const [autoPrint, setAutoPrint] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        const saved = localStorage.getItem('kanteen_auto_print');
+        return saved === null ? true : saved === 'true'; // default ON
+    });
     const [soundEnabled, setSoundEnabled] = useState(true);
 
     // Audio ref for notification sound
@@ -80,6 +90,7 @@ export default function KitchenPrintPage() {
     const printerId = getPrinterId();
     const {
         jobs,
+        failedJobs,
         loading,
         error,
         isListening,
@@ -88,20 +99,77 @@ export default function KitchenPrintPage() {
         claimJob,
         completeJob,
         failJob,
+        retryJob,
+        recoverStaleJobs: recoverStale,
     } = usePrintQueueRealtime({
-        autoStart: false,
+        autoStart: true,
         printerId,
         onNewJob: (job) => {
             // Play sound
             if (soundEnabled) {
                 playNotificationSound();
             }
-            // Auto-print if enabled and printer connected
-            if (autoPrint && printer?.characteristic) {
-                handlePrintJob(job.id);
+            // Auto-print if enabled — bluetooth needs connection, system always works
+            if (autoPrint) {
+                if (printMethod === 'bluetooth' && printer?.characteristic) {
+                    handlePrintJob(job.id);
+                } else {
+                    // System/USB fallback — works for any print method when bluetooth not connected
+                    handleSystemPrintJob(job.id);
+                }
             }
         }
     });
+
+    // Persist print settings shared with /kitchen page
+    useEffect(() => {
+        localStorage.setItem('kanteen_auto_print', String(autoPrint));
+    }, [autoPrint]);
+
+    useEffect(() => {
+        localStorage.setItem('kanteen_print_method', printMethod);
+    }, [printMethod]);
+
+    // Recover stale jobs when listening starts (handles power-loss scenario)
+    const hasRecoveredRef = useRef(false);
+    useEffect(() => {
+        if (isListening && !hasRecoveredRef.current) {
+            hasRecoveredRef.current = true;
+            recoverStale().then((count) => {
+                if (count > 0) {
+                    toast({
+                        title: "Recovered Print Jobs",
+                        description: `${count} stuck job(s) recovered and re-queued`,
+                    });
+                }
+            });
+        }
+    }, [isListening, recoverStale, toast]);
+
+    // Auto-resume: when printer reconnects, recover stale + process queue
+    const prevPrinterRef = useRef<BluetoothPrinter | null>(null);
+    useEffect(() => {
+        if (printer && !prevPrinterRef.current && isListening) {
+            // Printer just connected — recover any stale jobs first
+            recoverStale().then((count) => {
+                if (count > 0) {
+                    toast({
+                        title: "Printer Reconnected",
+                        description: `${count} stuck job(s) recovered. Auto-printing...`,
+                    });
+                }
+                // If auto-print is enabled, process the queue
+                if (autoPrint && jobs.length > 0) {
+                    if (printMethod === 'bluetooth') {
+                        handlePrintJob(jobs[0].id);
+                    } else {
+                        handleSystemPrintJob(jobs[0].id);
+                    }
+                }
+            });
+        }
+        prevPrinterRef.current = printer;
+    }, [printer, isListening]);
 
     // Authorization check
     useEffect(() => {
@@ -168,19 +236,14 @@ export default function KitchenPrintPage() {
 
         setConnecting(true);
         try {
-            // Request Bluetooth device with Serial Port Profile
+            // Show ALL devices so any printer model is visible (paired devices show first)
             const device = await navigator.bluetooth.requestDevice({
-                filters: [
-                    { services: ['000018f0-0000-1000-8000-00805f9b34fb'] }, // Common thermal printer service
-                    { namePrefix: 'Printer' },
-                    { namePrefix: 'POS' },
-                    { namePrefix: 'XP' },
-                    { namePrefix: 'TM' },
-                ],
+                acceptAllDevices: true,
                 optionalServices: [
                     '000018f0-0000-1000-8000-00805f9b34fb',
                     '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Nordic UART
                     'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // Serial Port
+                    '00001101-0000-1000-8000-00805f9b34fb', // SPP (Serial Port Profile)
                 ]
             });
 
@@ -259,10 +322,6 @@ export default function KitchenPrintPage() {
     // Generate receipt text for thermal printer
     const generateReceiptData = (job: any): string => {
         const width = 32;
-        const center = (text: string) => {
-            const padding = Math.max(0, Math.floor((width - text.length) / 2));
-            return ' '.repeat(padding) + text;
-        };
         const line = (char: string = '-') => char.repeat(width);
 
         let receipt = '';
@@ -270,85 +329,49 @@ export default function KitchenPrintPage() {
         // Initialize printer
         receipt += ESCPOS.INIT;
 
-        // Header
+        // Header - KANTEEN top, Token large
         receipt += ESCPOS.ALIGN_CENTER;
         receipt += ESCPOS.BOLD_ON;
-        receipt += ESCPOS.DOUBLE_SIZE;
+        receipt += ESCPOS.DOUBLE_HEIGHT;
         receipt += 'KANTEEN\n';
         receipt += ESCPOS.NORMAL_SIZE;
-        receipt += ESCPOS.BOLD_OFF;
-        receipt += 'Kitchen Order\n';
-        receipt += line('=') + '\n';
 
-        // Token - BIG and BOLD
-        receipt += '\n';
-        receipt += ESCPOS.BOLD_ON;
         receipt += ESCPOS.DOUBLE_SIZE;
-        receipt += `TOKEN: ${job.token}\n`;
+        receipt += `${job.token}\n`;
         receipt += ESCPOS.NORMAL_SIZE;
         receipt += ESCPOS.BOLD_OFF;
-        receipt += '\n';
 
-        // Customer info
+        receipt += line('-') + '\n';
+
+        // Items (compact)
         receipt += ESCPOS.ALIGN_LEFT;
-        if (job.customerName) {
-            receipt += `Name: ${job.customerName}\n`;
-        }
-        if (job.customerEmail) {
-            // Show email in smaller text
-            const emailShort = job.customerEmail.length > 28
-                ? job.customerEmail.substring(0, 25) + '...'
-                : job.customerEmail;
-            receipt += `${emailShort.toLowerCase()}\n`;
-        }
+        job.items.forEach((item: any) => {
+            const qtyStr = `${item.qty}x`;
+            const name = item.name.length > 27
+                ? item.name.substring(0, 24) + '...'
+                : item.name;
+            receipt += `${qtyStr.padEnd(4)} ${name}\n`;
+        });
 
-        // Parcel indicator
-        if (job.isParcel) {
-            receipt += ESCPOS.ALIGN_CENTER;
+        // Note (if any)
+        if (job.note) {
+            receipt += line('-') + '\n';
             receipt += ESCPOS.BOLD_ON;
-            receipt += '*** PARCEL ***\n';
+            receipt += `NOTE: ${job.note}\n`;
             receipt += ESCPOS.BOLD_OFF;
         }
 
         receipt += line('-') + '\n';
 
-        // Kitchen Note (if any) - IMPORTANT for kitchen staff
-        if (job.note) {
-            receipt += ESCPOS.BOLD_ON;
-            receipt += 'NOTE:\n';
-            receipt += ESCPOS.BOLD_OFF;
-            // Word wrap note to fit 32 char width
-            const words = job.note.split(' ');
-            let currentLine = '';
-            words.forEach((word: string) => {
-                if ((currentLine + ' ' + word).trim().length <= 30) {
-                    currentLine = (currentLine + ' ' + word).trim();
-                } else {
-                    if (currentLine) receipt += currentLine + '\n';
-                    currentLine = word;
-                }
-            });
-            if (currentLine) receipt += currentLine + '\n';
-            receipt += line('-') + '\n';
+        // Bottom Info: Customer, Parcel, Date
+        receipt += ESCPOS.ALIGN_LEFT;
+        if (job.customerName) {
+            receipt += `Name: ${job.customerName}\n`;
+        }
+        if (job.isParcel) {
+            receipt += '*** PARCEL ***\n';
         }
 
-        // Items
-        receipt += ESCPOS.ALIGN_LEFT;
-        receipt += ESCPOS.BOLD_ON;
-        receipt += 'ITEMS:\n';
-        receipt += ESCPOS.BOLD_OFF;
-
-        job.items.forEach((item: any) => {
-            const qtyStr = `x${item.qty}`;
-            const name = item.name.length > 24
-                ? item.name.substring(0, 21) + '...'
-                : item.name;
-            receipt += `${qtyStr.padEnd(4)} ${name}\n`;
-        });
-
-        receipt += line('=') + '\n';
-
-        // Timestamp
         receipt += ESCPOS.ALIGN_CENTER;
         receipt += new Date().toLocaleString('en-IN', {
             day: '2-digit',
@@ -432,6 +455,17 @@ export default function KitchenPrintPage() {
                     title: "Printed!",
                     description: `Token ${job.token} printed successfully`,
                 });
+
+                // 4. Auto-print next job in queue (chaining)
+                if (autoPrint && printer?.characteristic) {
+                    // Small delay to let the printer finish cutting
+                    setTimeout(() => {
+                        const remaining = jobs.filter(j => j.id !== jobId);
+                        if (remaining.length > 0) {
+                            handlePrintJob(remaining[0].id);
+                        }
+                    }, 1500);
+                }
             } else {
                 throw new Error('Failed to send to printer');
             }
@@ -440,60 +474,168 @@ export default function KitchenPrintPage() {
             await failJob(jobId, error.message || 'Print failed');
             toast({
                 title: "Print Failed",
-                description: "Job will be retried automatically",
+                description: "Job marked as failed. Fix printer and retry.",
                 variant: "destructive"
             });
         }
     };
 
-    // Browser print fallback
-    const handleBrowserPrint = (job: any) => {
-        const printWindow = window.open('', '_blank', 'width=400,height=600');
-        if (!printWindow) return;
+    // Retry a failed job
+    const handleRetryJob = async (jobId: string) => {
+        const retried = await retryJob(jobId);
+        if (retried) {
+            toast({
+                title: "Re-queued",
+                description: "Job will be printed when printer is ready",
+            });
+        } else {
+            toast({
+                title: "Retry Failed",
+                description: "Could not re-queue the job",
+                variant: "destructive"
+            });
+        }
+    };
 
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Token ${job.token}</title>
-                <style>
-                    body {
-                        font-family: 'Courier New', monospace;
-                        width: 80mm;
-                        margin: 0;
-                        padding: 10px;
-                        font-size: 12px;
+    // Retry all failed jobs at once
+    const handleRetryAllFailed = async () => {
+        let count = 0;
+        for (const job of failedJobs) {
+            const ok = await retryJob(job.id);
+            if (ok) count++;
+        }
+        toast({
+            title: "Re-queued All",
+            description: `${count} job(s) moved back to print queue`,
+        });
+    };
+
+    // Browser print fallback (OS System Printer)
+    const handleSystemPrintJob = async (jobId: string) => {
+        const job = jobs.find(j => j.id === jobId);
+        if (!job) return;
+
+        // 1. Claim the job first
+        const claimed = await claimJob(jobId);
+        if (!claimed) {
+            toast({
+                title: "Already Claimed",
+                description: "This job is being printed by another device",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        try {
+            const printWindow = window.open('', '_blank', 'width=400,height=600');
+            if (!printWindow) throw new Error("Pop-up blocked. Please allow pop-ups for auto-printing.");
+
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Token ${job.token}</title>
+                    <style>
+                        body {
+                            font-family: 'Courier New', Courier, monospace;
+                            margin: 0;
+                            padding: 0;
+                            background-color: white;
+                            color: black;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .receipt {
+                            width: 80mm;
+                            padding: 5mm;
+                            box-sizing: border-box;
+                            font-size: 12px;
+                            line-height: 1.2;
+                        }
+                        .center { text-align: center; }
+                        .bold { font-weight: bold; }
+                        .divider { border-top: 1px dashed black; margin: 5px 0; }
+                        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                        th, td { text-align: left; padding: 2px 0; }
+                        .right { text-align: right; }
+                        
+                        @media print {
+                            @page { size: 80mm auto; margin: 0; }
+                            body { margin: 0; padding: 0; display: block; }
+                            .receipt { width: 100%; padding: 0; margin: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="receipt">
+                        <div class="center">
+                            <h2 style="margin: 0;">KANTEEN</h2>
+                            <h1 style="margin: 5px 0; font-size: 24px;">Token: ${job.token}</h1>
+                        </div>
+                        <div class="divider"></div>
+                        ${job.customerName ? '<p style="margin: 5px 0;">Name: ' + job.customerName + '</p>' : ''}
+                        ${job.isParcel ? '<div class="center bold" style="font-size: 16px;">*** PARCEL ***</div>' : ''}
+                        <p style="margin: 0 0 5px 0;">Date: ${new Date().toLocaleString('en-IN')}</p>
+                        
+                        <div class="divider"></div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th class="right">Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${job.items.map((i: any) =>
+                '<tr><td>' + i.name + '</td><td class="right">' + i.qty + '</td></tr>'
+            ).join('')}
+                            </tbody>
+                        </table>
+                        
+                        ${job.note ? '<div class="divider"></div><p class="bold">NOTE: ' + job.note + '</p>' : ''}
+                        
+                        <div class="divider"></div>
+                        <div class="center" style="margin-top: 10px;">
+                            <p class="bold">THANK YOU!</p>
+                            <br/><br/><br/>
+                        </div>
+                    </div>
+                    <script>
+                        window.onload = () => {
+                            window.print();
+                            setTimeout(() => window.close(), 500);
+                        };
+                    </script>
+                </body>
+                </html>
+            `;
+
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+
+            await completeJob(jobId);
+            toast({
+                title: "Printed!",
+                description: `Token ${job.token} sent to System Printer`,
+            });
+
+            if (autoPrint) {
+                setTimeout(() => {
+                    const remaining = jobs.filter(j => j.id !== jobId);
+                    if (remaining.length > 0) {
+                        handleSystemPrintJob(remaining[0].id);
                     }
-                    .center { text-align: center; }
-                    .bold { font-weight: bold; }
-                    .big { font-size: 24px; }
-                    .huge { font-size: 48px; }
-                    hr { border: 1px dashed #000; }
-                    .item { display: flex; justify-content: space-between; }
-                    @media print {
-                        body { width: 80mm; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="center bold big">KANTEEN</div>
-                <div class="center">Kitchen Order</div>
-                <hr>
-                <div class="center bold huge">${job.token}</div>
-                ${job.customerName ? `<div>Name: ${job.customerName}</div>` : ''}
-                ${job.customerEmail ? `<div style="font-size:10px;color:#666;">${job.customerEmail.toLowerCase()}</div>` : ''}
-                ${job.isParcel ? '<div class="center bold">*** PARCEL ***</div>' : ''}
-                ${job.note ? `<hr><div class="bold">NOTE:</div><div style="background:#fff3cd;padding:5px;border-radius:4px;">${job.note}</div>` : ''}
-                <hr>
-                <div class="bold">ITEMS:</div>
-                ${job.items.map((i: any) => `<div class="item"><span>x${i.qty}</span><span>${i.name}</span></div>`).join('')}
-                <hr>
-                <div class="center">${new Date().toLocaleString('en-IN')}</div>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
-        printWindow.print();
+                }, 1500);
+            }
+        } catch (error: any) {
+            await failJob(jobId, error.message || 'System print failed');
+            toast({
+                title: "Print Failed",
+                description: error.message || "Please check your pop-up blocker",
+                variant: "destructive"
+            });
+        }
     };
 
     if (authLoading || isAuthorized === null) {
@@ -520,8 +662,8 @@ export default function KitchenPrintPage() {
                         </div>
                         <div>
                             <h1 className="text-lg font-black tracking-tight">Print Station</h1>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                {isListening ? 'Real-time listening...' : 'Paused'}
+                            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                {isListening ? 'Listening...' : 'Paused'}
                             </p>
                         </div>
                     </div>
@@ -535,8 +677,8 @@ export default function KitchenPrintPage() {
                                 printer ? "bg-emerald-500" : ""
                             )}
                         >
-                            {printer ? <Bluetooth className="h-3 w-3" /> : <BluetoothOff className="h-3 w-3" />}
-                            {printer ? printer.name.slice(0, 10) : 'No Printer'}
+                            {printer ? <Bluetooth className="h-3 w-3" /> : <Printer className="h-3 w-3" />}
+                            {printer ? printer.name.slice(0, 12) : printMethod === 'system' ? 'USB/System' : 'No Printer'}
                         </Badge>
                     </div>
                 </div>
@@ -546,70 +688,99 @@ export default function KitchenPrintPage() {
                 {/* Printer Connection Card */}
                 <Card className="border-none shadow-sm">
                     <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className={cn(
-                                    "p-3 rounded-xl",
-                                    printer ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500"
-                                )}>
-                                    <Bluetooth className="h-6 w-6" />
-                                </div>
-                                <div>
-                                    <p className="font-bold">Bluetooth Printer</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {printer ? `Connected to ${printer.name}` : 'Not connected'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {printer ? (
-                                <Button
-                                    variant="outline"
-                                    onClick={disconnectPrinter}
-                                    className="text-red-600 border-red-200 hover:bg-red-50"
-                                >
-                                    Disconnect
-                                </Button>
-                            ) : (
-                                <Button
-                                    onClick={connectPrinter}
-                                    disabled={connecting}
-                                    className="bg-blue-600 hover:bg-blue-700"
-                                >
-                                    {connecting ? (
-                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    ) : (
-                                        <Bluetooth className="h-4 w-4 mr-2" />
-                                    )}
-                                    Connect
-                                </Button>
-                            )}
-                        </div>
-
-                        {/* Settings */}
-                        <div className="flex flex-col gap-3 pt-3 border-t">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                                    <span className="text-sm font-medium">Sound Alerts</span>
-                                </div>
-                                <Switch
-                                    checked={soundEnabled}
-                                    onCheckedChange={setSoundEnabled}
-                                />
-                            </div>
-
+                        <div className="flex flex-col gap-4">
+                            {/* Print Method Selection */}
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Printer className="h-4 w-4" />
-                                    <span className="text-sm font-medium">Auto-Print</span>
-                                    <span className="text-xs text-muted-foreground">(requires printer)</span>
+                                    <span className="text-sm font-medium">Print Method</span>
                                 </div>
-                                <Switch
-                                    checked={autoPrint}
-                                    onCheckedChange={setAutoPrint}
-                                    disabled={!printer}
-                                />
+                                <div className="flex items-center border rounded-md overflow-hidden text-xs">
+                                    <button
+                                        onClick={() => setPrintMethod('system')}
+                                        className={cn("px-3 py-2.5 font-medium transition-colors", printMethod === 'system' ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-transparent text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800")}
+                                    >
+                                        System (USB/Browser)
+                                    </button>
+                                    <button
+                                        onClick={() => setPrintMethod('bluetooth')}
+                                        className={cn("px-3 py-2.5 font-medium transition-colors", printMethod === 'bluetooth' ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-transparent text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800")}
+                                    >
+                                        Bluetooth
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Bluetooth Connection UI */}
+                            {printMethod === 'bluetooth' && (
+                                <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+                                    <div className="flex items-center gap-3">
+                                        <div className={cn(
+                                            "p-3 rounded-xl",
+                                            printer ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500"
+                                        )}>
+                                            <Bluetooth className="h-6 w-6" />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold">Bluetooth Printer</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {printer ? `Connected to ${printer.name}` : 'Not connected'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {printer ? (
+                                        <Button
+                                            variant="outline"
+                                            onClick={disconnectPrinter}
+                                            className="text-red-600 border-red-200 hover:bg-red-50"
+                                        >
+                                            Disconnect
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            onClick={connectPrinter}
+                                            disabled={connecting}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                        >
+                                            {connecting ? (
+                                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                            ) : (
+                                                <Bluetooth className="h-4 w-4 mr-2" />
+                                            )}
+                                            Connect
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Settings */}
+                            <div className="flex flex-col gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                                        <span className="text-sm font-medium">Sound Alerts</span>
+                                    </div>
+                                    <Switch
+                                        checked={soundEnabled}
+                                        onCheckedChange={setSoundEnabled}
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <RefreshCw className="h-4 w-4" />
+                                        <span className="text-sm font-medium">Auto-Print</span>
+                                        <span className="text-xs text-muted-foreground">
+                                            {printMethod === 'bluetooth' ? '(requires connection)' : '(opens print dialog)'}
+                                        </span>
+                                    </div>
+                                    <Switch
+                                        checked={autoPrint}
+                                        onCheckedChange={setAutoPrint}
+                                        disabled={false}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </CardContent>
@@ -724,24 +895,24 @@ export default function KitchenPrintPage() {
 
                                                 {/* Print buttons */}
                                                 <div className="flex gap-2 mt-3">
-                                                    {printer ? (
+                                                    {printMethod === 'bluetooth' && printer ? (
                                                         <Button
                                                             onClick={() => handlePrintJob(job.id)}
                                                             size="sm"
                                                             className="flex-1 bg-emerald-600 hover:bg-emerald-700 font-bold"
                                                         >
                                                             <Printer className="h-4 w-4 mr-1" />
-                                                            Print
+                                                            Print (Bluetooth)
                                                         </Button>
                                                     ) : (
                                                         <Button
-                                                            onClick={() => handleBrowserPrint(job)}
+                                                            onClick={() => handleSystemPrintJob(job.id)}
                                                             size="sm"
-                                                            variant="outline"
-                                                            className="flex-1 font-bold"
+                                                            variant="default"
+                                                            className="flex-1 font-bold bg-slate-900 text-white hover:bg-slate-800 hover:text-white"
                                                         >
                                                             <Printer className="h-4 w-4 mr-1" />
-                                                            Browser Print
+                                                            System Print
                                                         </Button>
                                                     )}
                                                 </div>
@@ -754,6 +925,89 @@ export default function KitchenPrintPage() {
                     )}
                 </div>
 
+                {/* Failed / Dead Letter Jobs */}
+                {failedJobs.length > 0 && (
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h2 className="font-black text-sm uppercase tracking-wider text-red-500 flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4" />
+                                Failed Prints
+                            </h2>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="destructive" className="font-black">
+                                    {failedJobs.length} failed
+                                </Badge>
+                                <Button
+                                    onClick={handleRetryAllFailed}
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                >
+                                    <RotateCcw className="h-3 w-3 mr-1" />
+                                    Retry All
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {failedJobs.map((job) => (
+                                <Card key={job.id} className="border-red-200 bg-red-50/50 dark:bg-red-950/10 shadow-sm overflow-hidden">
+                                    <CardContent className="p-0">
+                                        <div className="flex">
+                                            <div className="bg-red-100 dark:bg-red-900/30 p-3 flex flex-col items-center justify-center min-w-[70px]">
+                                                <span className="text-2xl font-black text-red-600">
+                                                    {job.token}
+                                                </span>
+                                                <Badge variant="destructive" className="mt-1 text-[8px] px-1">
+                                                    {job.status === 'dead_letter' ? 'DEAD' : 'FAIL'}
+                                                </Badge>
+                                            </div>
+
+                                            <div className="flex-1 p-3">
+                                                {job.customerName && (
+                                                    <p className="font-bold text-sm truncate">
+                                                        {job.customerName}
+                                                    </p>
+                                                )}
+                                                <div className="text-xs text-muted-foreground mt-1">
+                                                    {job.items.slice(0, 2).map((item, i) => (
+                                                        <span key={i}>
+                                                            {item.qty}x {item.name}
+                                                            {i < Math.min(job.items.length - 1, 1) && ', '}
+                                                        </span>
+                                                    ))}
+                                                    {job.items.length > 2 && (
+                                                        <span> +{job.items.length - 2} more</span>
+                                                    )}
+                                                </div>
+                                                {job.error && (
+                                                    <p className="text-xs text-red-500 mt-1 truncate">
+                                                        {job.error}
+                                                    </p>
+                                                )}
+                                                <p className="text-xs text-muted-foreground">
+                                                    Attempts: {job.attempts}
+                                                </p>
+
+                                                <div className="flex gap-2 mt-2">
+                                                    <Button
+                                                        onClick={() => handleRetryJob(job.id)}
+                                                        size="sm"
+                                                        className="flex-1 bg-orange-500 hover:bg-orange-600 font-bold text-xs"
+                                                    >
+                                                        <RefreshCw className="h-3 w-3 mr-1" />
+                                                        Retry
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Instructions */}
                 <Card className="border-none bg-amber-50 dark:bg-amber-950/20">
                     <CardContent className="p-4">
@@ -761,10 +1015,12 @@ export default function KitchenPrintPage() {
                             How to use:
                         </h3>
                         <ol className="text-xs text-amber-700 dark:text-amber-300 space-y-1 list-decimal list-inside">
-                            <li>Turn on your Bluetooth printer</li>
-                            <li>Tap "Connect" and select your printer</li>
-                            <li>Tap "Start Listening" to receive orders</li>
-                            <li>Enable "Auto-Print" for automatic printing</li>
+                            <li><strong>System/USB (recommended for laptop):</strong> Set your thermal printer as the default printer in Windows. Orders print automatically.</li>
+                            <li><strong>Bluetooth (Android Chrome):</strong> Pair printer in Android Settings first, then tap Connect here.</li>
+                            <li>Auto-Print and listening start automatically — just keep this page open.</li>
+                            <li className="font-bold">System Print: In Chrome print dialog, set Paper Size to 80mm Roll and Margins to None.</li>
+                            <li>Allow pop-ups in your browser for System Print to work automatically.</li>
+                            <li>If paper runs out, failed jobs appear in red above. Fix printer and tap "Retry All".</li>
                         </ol>
                     </CardContent>
                 </Card>

@@ -66,8 +66,8 @@ function OrderContent() {
     const [checkingProfile, setCheckingProfile] = useState(true);
     const [profileExists, setProfileExists] = useState(false);
 
-    // Menu items
-    const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({});
+    // Menu items — only show items that are currently available
+    const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({ includeUnavailable: false });
 
     // Cart
     const { totalItems, totalPrice, getCheckoutItems, clearCart } = useCart();

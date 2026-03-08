@@ -3,12 +3,13 @@
 import { useCart } from "@/contexts/cart-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { useRazorpay } from "@/hooks/use-razorpay";
+import { useMenuItems } from "@/hooks/use-menu-items";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag, Package, MessageSquare } from "lucide-react";
+import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag, Package, MessageSquare, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CartPage() {
@@ -20,9 +21,34 @@ export default function CartPage() {
     const [isParcel, setIsParcel] = useState(false);
     const [note, setNote] = useState('');
 
+    // Real-time availability check — fetch all active items (including unavailable ones)
+    const { items: menuItems } = useMenuItems({ includeUnavailable: true });
+
+    // Cross-reference cart items with live availability data
+    const unavailableItemIds = useMemo(() => {
+        const menuMap = new Map(menuItems.map(m => [m.id, m]));
+        return new Set(
+            items
+                .filter(ci => {
+                    const menuItem = menuMap.get(ci.itemId);
+                    // If item is found and isAvailable is false → it's unavailable
+                    return menuItem !== undefined && !menuItem.isAvailable;
+                })
+                .map(ci => ci.itemId)
+        );
+    }, [items, menuItems]);
+
+    const hasUnavailableItems = unavailableItemIds.size > 0;
+
     // Razorpay checkout
     const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
         onSuccess: (response) => {
+            // Save order summary for success page
+            sessionStorage.setItem('lastOrderSummary', JSON.stringify({
+                items: items.map(item => ({ name: item.name, quantity: item.qty, price: item.price })),
+                total: finalTotal,
+                isParcel: isParcel,
+            }));
             // OTP is generated when order is marked "Ready" by staff, not at payment time
             clearCart();
             toast({
@@ -110,17 +136,51 @@ export default function CartPage() {
 
             {/* Cart Items */}
             <div className="max-w-2xl mx-auto px-4 py-6 mb-40">
+                {/* Unavailability warning banner */}
+                {hasUnavailableItems && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mb-4 flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4"
+                    >
+                        <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="font-semibold text-red-700 text-sm">
+                                {unavailableItemIds.size} item{unavailableItemIds.size > 1 ? "s" : ""} no longer available
+                            </p>
+                            <p className="text-red-600 text-xs mt-0.5">
+                                These items were made unavailable by the canteen. Remove them to proceed with checkout.
+                            </p>
+                        </div>
+                    </motion.div>
+                )}
+
                 <div className="space-y-3">
-                    {items.map((item, index) => (
+                    {items.map((item, index) => {
+                        const isItemUnavailable = unavailableItemIds.has(item.itemId);
+                        return (
                         <motion.div
                             key={item.itemId}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.05 }}
-                            className="flex items-center gap-4 p-4 bg-white rounded-2xl shadow-sm border border-gray-100"
+                            className={`flex items-center gap-4 p-4 rounded-2xl shadow-sm border ${
+                                isItemUnavailable
+                                    ? "bg-red-50 border-red-200"
+                                    : "bg-white border-gray-100"
+                            }`}
                         >
                             <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-900 break-words">{item.name}</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <p className={`font-semibold break-words ${isItemUnavailable ? "text-red-700" : "text-gray-900"}`}>
+                                        {item.name}
+                                    </p>
+                                    {isItemUnavailable && (
+                                        <span className="text-xs font-bold bg-red-100 text-red-600 rounded-full px-2 py-0.5 uppercase tracking-wide">
+                                            Unavailable
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="text-sm text-gray-500">₹{item.price} each</p>
                             </div>
 
@@ -152,7 +212,8 @@ export default function CartPage() {
                                 <Trash2 className="h-4 w-4 text-gray-400 hover:text-red-500" />
                             </button>
                         </motion.div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
@@ -232,10 +293,22 @@ export default function CartPage() {
                             </div>
                         </div>
                     </div>
+                    {/* Unavailable warning above button */}
+                    {hasUnavailableItems && (
+                        <p className="text-xs text-center text-red-500 font-medium -mb-1">
+                            Remove unavailable items before placing your order
+                        </p>
+                    )}
+
                     <Button
-                        className="w-full h-14 text-base font-semibold rounded-2xl bg-primary hover:bg-primary/90 text-white transition-all shadow-lg shadow-orange-200"
-                        disabled={items.length === 0 || processing || paymentLoading}
+                        className={`w-full h-14 text-base font-semibold rounded-2xl text-white transition-all ${
+                            hasUnavailableItems
+                                ? "bg-gray-300 cursor-not-allowed shadow-none"
+                                : "bg-primary hover:bg-primary/90 shadow-lg shadow-orange-200"
+                        }`}
+                        disabled={items.length === 0 || processing || paymentLoading || hasUnavailableItems}
                         onClick={async () => {
+                            if (hasUnavailableItems) return;
                             if (!user?.uid) {
                                 toast({
                                     title: "Login Required",
@@ -263,7 +336,7 @@ export default function CartPage() {
                             }
                         }}
                     >
-                        {processing || paymentLoading ? "Processing..." : "Proceed to Pay"}
+                        {processing || paymentLoading ? "Processing..." : hasUnavailableItems ? "Remove Unavailable Items" : "Proceed to Pay"}
                     </Button>
                 </div>
             </div>

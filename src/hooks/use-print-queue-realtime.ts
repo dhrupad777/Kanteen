@@ -22,6 +22,7 @@ interface PrintJob {
     status: 'queued' | 'printing' | 'completed' | 'failed' | 'dead_letter';
     createdAt: Date;
     attempts: number;
+    error?: string;
 }
 
 interface UsePrintQueueRealtimeOptions {
@@ -38,6 +39,8 @@ interface UsePrintQueueRealtimeOptions {
 interface UsePrintQueueRealtimeReturn {
     /** Current queued print jobs */
     jobs: PrintJob[];
+    /** Failed/dead-letter print jobs */
+    failedJobs: PrintJob[];
     /** Pending count for badge display */
     pendingCount: number;
     /** Loading state */
@@ -56,11 +59,18 @@ interface UsePrintQueueRealtimeReturn {
     completeJob: (jobId: string) => Promise<boolean>;
     /** Mark a job as failed */
     failJob: (jobId: string, error: string) => Promise<boolean>;
+    /** Retry a failed/dead-letter job */
+    retryJob: (jobId: string) => Promise<boolean>;
+    /** Recover stale jobs stuck in 'printing' state */
+    recoverStaleJobs: () => Promise<number>;
 }
 
 /**
  * Real-time print queue hook using Firestore onSnapshot.
  * Provides instant notifications when new print jobs arrive.
+ * 
+ * Listens for BOTH 'queued' (ready to print) and 'failed'/'dead_letter'
+ * (need attention) jobs to ensure nothing is lost.
  *
  * Much faster than polling - jobs appear within ~100ms of creation.
  */
@@ -69,11 +79,13 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
     const { user } = useAuth();
 
     const [jobs, setJobs] = useState<PrintJob[]>([]);
+    const [failedJobs, setFailedJobs] = useState<PrintJob[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isListening, setIsListening] = useState(autoStart);
 
-    const unsubscribeRef = useRef<(() => void) | null>(null);
+    const unsubscribeQueuedRef = useRef<(() => void) | null>(null);
+    const unsubscribeFailedRef = useRef<(() => void) | null>(null);
     const previousJobIdsRef = useRef<Set<string>>(new Set());
     const onNewJobRef = useRef(onNewJob);
 
@@ -88,13 +100,38 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
 
     const stopListening = useCallback(() => {
         setIsListening(false);
-        if (unsubscribeRef.current) {
-            unsubscribeRef.current();
-            unsubscribeRef.current = null;
+        if (unsubscribeQueuedRef.current) {
+            unsubscribeQueuedRef.current();
+            unsubscribeQueuedRef.current = null;
+        }
+        if (unsubscribeFailedRef.current) {
+            unsubscribeFailedRef.current();
+            unsubscribeFailedRef.current = null;
         }
     }, []);
 
-    // Real-time Firestore listener
+    // Parse a Firestore doc into a PrintJob
+    const parseJob = (doc: any): PrintJob => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            orderId: data.payload?.orderId || doc.id,
+            token: data.payload?.token || 0,
+            items: data.payload?.items || [],
+            customerName: data.payload?.studentName,
+            customerEmail: data.payload?.studentEmail,
+            note: data.payload?.note,
+            isParcel: data.payload?.isParcel || false,
+            status: data.status,
+            createdAt: data.createdAt instanceof Timestamp
+                ? data.createdAt.toDate()
+                : new Date(data.payload?.createdAt || Date.now()),
+            attempts: data.attempts || 0,
+            error: data.error,
+        };
+    };
+
+    // Real-time Firestore listener for QUEUED jobs
     useEffect(() => {
         if (!isListening || !user) {
             return;
@@ -103,45 +140,27 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
         setLoading(true);
         setError(null);
 
-        // Query for queued print jobs
-        const q = query(
+        // === Listener 1: Queued jobs (ready to print) ===
+        const queuedQuery = query(
             collection(db, 'print_jobs'),
             where('status', '==', 'queued'),
             orderBy('createdAt', 'asc'),
             limit(maxJobs)
         );
 
-        const unsubscribe = onSnapshot(
-            q,
+        const unsubQueued = onSnapshot(
+            queuedQuery,
             (snapshot) => {
                 const newJobs: PrintJob[] = [];
                 const currentJobIds = new Set<string>();
 
                 snapshot.forEach((doc) => {
-                    const data = doc.data();
                     currentJobIds.add(doc.id);
-
-                    const job: PrintJob = {
-                        id: doc.id,
-                        orderId: data.payload?.orderId || doc.id,
-                        token: data.payload?.token || 0,
-                        items: data.payload?.items || [],
-                        customerName: data.payload?.studentName,
-                        customerEmail: data.payload?.studentEmail,
-                        note: data.payload?.note,
-                        isParcel: data.payload?.isParcel || false,
-                        status: data.status,
-                        createdAt: data.createdAt instanceof Timestamp
-                            ? data.createdAt.toDate()
-                            : new Date(data.payload?.createdAt || Date.now()),
-                        attempts: data.attempts || 0,
-                    };
-
+                    const job = parseJob(doc);
                     newJobs.push(job);
 
                     // Check if this is a new job and trigger callback
                     if (!previousJobIdsRef.current.has(doc.id) && onNewJobRef.current) {
-                        // Small delay to ensure state is updated first
                         setTimeout(() => {
                             onNewJobRef.current?.(job);
                         }, 100);
@@ -154,7 +173,6 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
             },
             (err) => {
                 console.error('Print queue listener error:', err);
-                // Don't show permission errors as they're expected for non-managers
                 if (err.code !== 'permission-denied') {
                     setError(err.message || 'Failed to listen for print jobs');
                 }
@@ -162,19 +180,48 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
             }
         );
 
-        unsubscribeRef.current = unsubscribe;
+        // === Listener 2: Failed + dead_letter jobs (need attention) ===
+        const failedQuery = query(
+            collection(db, 'print_jobs'),
+            where('status', 'in', ['failed', 'dead_letter']),
+            orderBy('createdAt', 'asc'),
+            limit(maxJobs)
+        );
+
+        const unsubFailed = onSnapshot(
+            failedQuery,
+            (snapshot) => {
+                const failed: PrintJob[] = [];
+                snapshot.forEach((doc) => {
+                    failed.push(parseJob(doc));
+                });
+                setFailedJobs(failed);
+            },
+            (err) => {
+                // Silently ignore failed listener errors (non-critical)
+                console.error('Failed jobs listener error:', err);
+            }
+        );
+
+        unsubscribeQueuedRef.current = unsubQueued;
+        unsubscribeFailedRef.current = unsubFailed;
 
         return () => {
-            unsubscribe();
-            unsubscribeRef.current = null;
+            unsubQueued();
+            unsubFailed();
+            unsubscribeQueuedRef.current = null;
+            unsubscribeFailedRef.current = null;
         };
     }, [isListening, user, maxJobs]);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (unsubscribeRef.current) {
-                unsubscribeRef.current();
+            if (unsubscribeQueuedRef.current) {
+                unsubscribeQueuedRef.current();
+            }
+            if (unsubscribeFailedRef.current) {
+                unsubscribeFailedRef.current();
             }
         };
     }, []);
@@ -195,7 +242,6 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
 
             if (!response.ok) {
                 if (response.status === 409) {
-                    // Job already claimed by another printer
                     return false;
                 }
                 throw new Error('Failed to claim print job');
@@ -258,8 +304,59 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
         }
     }, [user]);
 
+    const retryJob = useCallback(async (jobId: string): Promise<boolean> => {
+        if (!user) return false;
+
+        try {
+            const token = await user.getIdToken();
+            const response = await fetch('/api/print/retry', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({ jobId }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to retry print job');
+            }
+
+            return true;
+        } catch (err: any) {
+            setError(err.message || 'Failed to retry print job');
+            return false;
+        }
+    }, [user]);
+
+    const recoverStaleJobs = useCallback(async (): Promise<number> => {
+        if (!user) return 0;
+
+        try {
+            const token = await user.getIdToken();
+            const response = await fetch('/api/print/recover', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to recover stale jobs');
+            }
+
+            const data = await response.json();
+            return data.recovered || 0;
+        } catch (err: any) {
+            console.error('Recover stale jobs error:', err);
+            return 0;
+        }
+    }, [user]);
+
     return {
         jobs,
+        failedJobs,
         pendingCount: jobs.length,
         loading,
         error,
@@ -269,5 +366,7 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
         claimJob,
         completeJob,
         failJob,
+        retryJob,
+        recoverStaleJobs,
     };
 }

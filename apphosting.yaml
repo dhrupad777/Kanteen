@@ -51,6 +51,12 @@ env:
       - BUILD
       - RUNTIME
 
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    value: G-H4REWSQCXJ
+    availability:
+      - BUILD
+      - RUNTIME
+
   # Auth bypass (must be false in production!)
   - variable: NEXT_PUBLIC_BYPASS_AUTH
     value: "false"
