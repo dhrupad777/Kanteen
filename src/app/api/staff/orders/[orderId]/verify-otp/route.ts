@@ -131,11 +131,12 @@ export async function POST(
             }
 
             // ====== CHECK OTP EXPIRY ======
-            if (orderData.otpExpiresAt) {
-                const expiresAt = orderData.otpExpiresAt.toDate ? orderData.otpExpiresAt.toDate() : new Date(orderData.otpExpiresAt);
-                if (new Date() > expiresAt) {
-                    throw new Error('OTP_EXPIRED');
-                }
+            if (!orderData.otpExpiresAt) {
+                throw new Error('OTP_EXPIRED');
+            }
+            const expiresAt = orderData.otpExpiresAt.toDate ? orderData.otpExpiresAt.toDate() : new Date(orderData.otpExpiresAt);
+            if (new Date() > expiresAt) {
+                throw new Error('OTP_EXPIRED');
             }
 
             // ====== CHECK ATTEMPT COUNT ======

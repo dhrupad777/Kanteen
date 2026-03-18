@@ -194,6 +194,15 @@ export function usePrinter() {
 
         r += divider('=');
 
+        // ── Customer name — right below token so staff sees it immediately ──
+        r += ESCPOS.ALIGN_LEFT;
+        const customerName = job.customerName || job.userName || '';
+        if (customerName) {
+            r += ESCPOS.BOLD_ON;
+            r += `${customerName}\n`;
+            r += ESCPOS.BOLD_OFF;
+        }
+
         // ── Items ─────────────────────────────────────────────────
         r += ESCPOS.ALIGN_LEFT;
         (job.items || []).forEach((item: any) => {
@@ -245,10 +254,6 @@ export function usePrinter() {
         r += ESCPOS.BOLD_OFF;
 
         r += divider();
-
-        // ── Customer name ─────────────────────────────────────────
-        const name = job.customerName || job.userName || '';
-        if (name) r += `Name: ${name}\n`;
 
         // ── PARCEL / DINE-IN — large, unmissable ──────────────────
         r += divider('=');

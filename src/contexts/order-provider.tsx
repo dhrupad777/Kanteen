@@ -23,6 +23,31 @@ interface OrderContextType {
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
+export const MANAGER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+function getCachedManagerRole(email: string): boolean | null {
+  try {
+    const raw = sessionStorage.getItem(`mgr:${email}`);
+    if (!raw) return null;
+    const { value, expiry } = JSON.parse(raw);
+    if (Date.now() > expiry) {
+      sessionStorage.removeItem(`mgr:${email}`);
+      return null;
+    }
+    return value as boolean;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedManagerRole(email: string, value: boolean) {
+  try {
+    sessionStorage.setItem(`mgr:${email}`, JSON.stringify({ value, expiry: Date.now() + MANAGER_CACHE_TTL }));
+  } catch {
+    // sessionStorage unavailable (private browsing edge cases)
+  }
+}
+
 export const OrderProvider = ({ children }: { children: ReactNode }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,10 +57,19 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
   const [isVerifiedManager, setIsVerifiedManager] = useState<boolean>(false);
 
   // Check for manager role whenever auth state changes
+  // Uses sessionStorage cache (10 min TTL) to avoid blocking order listeners on every page load
   useEffect(() => {
     async function checkRole() {
       if (user?.email) {
+        // Check cache first — avoids extra Firestore round-trip on every visit
+        const cached = getCachedManagerRole(user.email);
+        if (cached !== null) {
+          setIsVerifiedManager(cached);
+          setIsManager(cached);
+          return;
+        }
         const allowed = await checkManagerAllowlist(user.email);
+        setCachedManagerRole(user.email, allowed);
         setIsVerifiedManager(allowed);
         setIsManager(allowed);
       } else {

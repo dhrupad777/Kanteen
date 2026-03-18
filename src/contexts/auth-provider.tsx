@@ -3,9 +3,10 @@
 
 import type { ReactNode } from "react";
 import React, { createContext, useState, useEffect } from 'react';
-import { signInWithEmailAndPassword, signOut, User, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut, User, getRedirectResult } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import type { UserProfile } from "@/types";
 import { signInWithGoogle as googleSignIn, BYPASS_AUTH } from '@/lib/auth';
 
@@ -41,6 +42,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(BYPASS_AUTH ? MOCK_USER : null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(BYPASS_AUTH ? MOCK_USER_PROFILE : null);
   const [loading, setLoading] = useState(!BYPASS_AUTH);
+  const router = useRouter();
+
+  // Handle Google redirect result on mobile (fires once after the page reloads post-redirect)
+  useEffect(() => {
+    if (BYPASS_AUTH) return;
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        // After mobile Google sign-in redirect, always land on the student dashboard
+        router.replace('/student');
+      }
+    }).catch(() => {
+      // Redirect result errors are non-fatal; onAuthStateChanged handles the session
+    });
+  }, [router]);
 
   useEffect(() => {
     // Skip real auth listener if bypassing authentication
@@ -52,8 +67,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
         setUser(user);
-        // Default to fetching from 'users' collection
         const userRef = doc(db, "users", user.uid);
+
+        // Check once whether the profile document exists.
+        // - New user  → create a complete profile from Google data (name, email, photo)
+        // - Returning → only sync photoURL + lastLoginAt; never overwrite the stored name
+        getDoc(userRef).then((snap) => {
+          if (!snap.exists()) {
+            // First-ever sign-in: persist the full Google profile
+            setDoc(userRef, {
+              uid: user.uid,
+              name: user.displayName || '',
+              email: user.email || '',
+              photoURL: user.photoURL || '',
+              createdAt: serverTimestamp(),
+              lastLoginAt: serverTimestamp(),
+            }).catch(() => {});
+          } else {
+            // Returning user: keep their stored name; refresh photo + timestamp only
+            const sync: Record<string, any> = { lastLoginAt: serverTimestamp() };
+            if (user.photoURL) sync.photoURL = user.photoURL;
+            setDoc(userRef, sync, { merge: true }).catch(() => {});
+          }
+        }).catch(() => {});
 
         const unsubscribeFirestore = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -67,7 +103,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUserProfile(null);
           setLoading(false);
         });
-        // Cleanup firestore listener on user change
         return () => unsubscribeFirestore();
       } else {
         setUser(null);

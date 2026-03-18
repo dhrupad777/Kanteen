@@ -77,12 +77,21 @@ function OrderContent() {
         onSuccess: (response) => {
             // OTP is now generated when order is marked "Ready" by staff, not at payment time
             clearCart();
-            router.push(`/order/success?token=${response.token}&orderId=${response.orderId}`);
+            // Save order confirmation for dashboard toast (skip confirmation page)
+            sessionStorage.setItem('orderConfirmed', JSON.stringify({
+                token: response.token,
+                orderId: response.orderId,
+            }));
+            router.push('/student');
         },
         onError: (error) => {
+            // Distinguish verification failures (money may have been taken) from payment failures (money not taken)
+            const isVerificationError = error.toLowerCase().includes('verification') || error.toLowerCase().includes('verify');
             toast({
-                title: "Payment failed",
-                description: error,
+                title: isVerificationError ? "Payment verification failed" : "Payment failed",
+                description: isVerificationError
+                    ? `${error}. If money was deducted, it will be refunded within 5–7 business days. Contact canteen staff with your payment ID.`
+                    : error,
                 variant: "destructive",
             });
             setSubmitting(false);
@@ -97,30 +106,45 @@ function OrderContent() {
     });
 
     useEffect(() => {
-        async function check() {
-            if (user) {
-                if (userProfile) {
-                    setProfileExists(true);
-                    setCheckingProfile(false);
-                } else {
-                    const exists = await checkStudentProfileExists(user.uid);
-                    setProfileExists(exists);
-                    setCheckingProfile(false);
-                }
-            } else {
-                setCheckingProfile(false);
-            }
+        if (loading) return;
+        if (!user) {
+            setCheckingProfile(false);
+            return;
         }
-        if (!loading) {
-            check();
+        // auth-provider already created/synced the Firestore profile on sign-in.
+        // userProfile being non-null means it's ready; a null userProfile with a
+        // uid means the doc write is still in-flight — treat that as "exists" too
+        // so we don't show the name form for valid Google users.
+        if (userProfile) {
+            setProfileExists(true);
+            setCheckingProfile(false);
+        } else {
+            // Doc may still be writing; fall back to a direct check
+            checkStudentProfileExists(user.uid).then((exists) => {
+                setProfileExists(exists);
+                setCheckingProfile(false);
+            }).catch(() => setCheckingProfile(false));
         }
     }, [user, userProfile, loading]);
 
     async function handleGoogleSignIn() {
         try {
-            await signInWithGoogle();
-        } catch (error) {
+            const result = await signInWithGoogle();
+            // Desktop popup: result is the user — navigate to dashboard
+            // Mobile redirect: result is null (page navigates away); auth-provider handles the redirect
+            if (result) {
+                router.replace('/student');
+            }
+        } catch (error: any) {
             console.error("Sign in failed", error);
+            if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+                return;
+            }
+            toast({
+                title: "Sign in failed",
+                description: error?.message || "Could not sign in with Google. Please try again.",
+                variant: "destructive",
+            });
         }
     }
 
@@ -136,8 +160,13 @@ function OrderContent() {
                 photoURL: user.photoURL || ""
             });
             setProfileExists(true);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error creating profile:", error);
+            toast({
+                title: "Setup failed",
+                description: "Could not save your name. Please check your connection and try again.",
+                variant: "destructive",
+            });
         } finally {
             setSubmitting(false);
         }
@@ -305,10 +334,11 @@ function OrderContent() {
                         </h1>
 
                         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                            {userProfile?.photoURL && (
+                            {(userProfile?.photoURL || user?.photoURL) && (
                                 <img
-                                    src={userProfile.photoURL}
+                                    src={userProfile?.photoURL || user?.photoURL || ''}
                                     alt=""
+                                    referrerPolicy="no-referrer"
                                     className="h-7 w-7 sm:h-8 sm:w-8 rounded-full border border-gray-200"
                                 />
                             )}

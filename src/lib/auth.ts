@@ -1,6 +1,11 @@
 import { auth, db } from "@/lib/firebase";
-import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, User } from "firebase/auth";
+import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as firebaseSignOut, User } from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+
+function isMobileBrowser(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+}
 
 // ============================================================
 // TESTING MODE: Authentication bypass
@@ -43,8 +48,22 @@ export async function signInWithGoogle() {
         console.log("🔓 AUTH BYPASS: signInWithGoogle called (bypassed)");
         return MOCK_USER;
     }
+    // Mobile browsers block popups — use redirect flow instead
+    if (isMobileBrowser()) {
+        await signInWithRedirect(auth, googleProvider);
+        return null; // Page navigates away; getRedirectResult in auth-provider handles completion
+    }
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
+}
+
+export async function handleGoogleRedirectResult(): Promise<User | null> {
+    try {
+        const result = await getRedirectResult(auth);
+        return result?.user ?? null;
+    } catch {
+        return null;
+    }
 }
 
 export async function signOut() {

@@ -1,24 +1,44 @@
 "use client";
 
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CupSoda, ShoppingBag, ChefHat } from 'lucide-react';
+import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import Link from "next/link";
 import { MenuDisplay } from '@/components/menu-display';
 import { StudentDashboardSkeleton } from '@/components/skeletons';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function StudentDashboardPage() {
   const { orders, loading: ordersLoading } = useOrders();
   const { user, userProfile, loading: authLoading } = useAuth();
 
+  // Order confirmation toast state
+  const [orderConfirmed, setOrderConfirmed] = useState<{ token: number; orderId: string } | null>(null);
+
   // Auth check removed - dashboard is public
 
   const loading = ordersLoading || authLoading;
+
+  // Check for order confirmation from payment redirect
+  useEffect(() => {
+    const data = sessionStorage.getItem('orderConfirmed');
+    if (data) {
+      try {
+        setOrderConfirmed(JSON.parse(data));
+        sessionStorage.removeItem('orderConfirmed');
+        // Auto-dismiss after 5 seconds
+        const timer = setTimeout(() => setOrderConfirmed(null), 5000);
+        return () => clearTimeout(timer);
+      } catch (e) {
+        sessionStorage.removeItem('orderConfirmed');
+      }
+    }
+  }, []);
 
   // Memoize filtered orders to prevent unnecessary recalculations
   const myActiveOrders = useMemo(() =>
@@ -55,13 +75,87 @@ export default function StudentDashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Order Confirmed Dialog */}
+      <AnimatePresence>
+        {orderConfirmed && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            onClick={() => setOrderConfirmed(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 100, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 50, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Auto-dismiss progress bar */}
+              <motion.div
+                initial={{ scaleX: 1 }}
+                animate={{ scaleX: 0 }}
+                transition={{ duration: 5, ease: "linear" }}
+                className="absolute top-0 left-0 right-0 h-1 bg-green-500 origin-left"
+              />
+
+              {/* Dismiss button */}
+              <button
+                onClick={() => setOrderConfirmed(null)}
+                className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+
+              <div className="p-6 text-center">
+                {/* Success icon */}
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.15, type: "spring", stiffness: 200 }}
+                  className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3"
+                >
+                  <CheckCircle2 className="w-7 h-7 text-green-600" />
+                </motion.div>
+
+                <h2 className="text-lg font-bold text-gray-900 mb-1">Order Confirmed!</h2>
+
+                {/* Token number */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.25, type: "spring" }}
+                  className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-4 my-3 text-white"
+                >
+                  <p className="text-orange-100 text-[10px] font-bold uppercase tracking-widest mb-0.5">Your Token</p>
+                  <p className="text-5xl font-black tracking-tight">{orderConfirmed.token}</p>
+                </motion.div>
+
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mt-2">
+                  <ChefHat className="w-4 h-4 text-blue-500" />
+                  <span>Being prepared — OTP will appear when ready</span>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {user && (
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-2">
-          <div>
-            <h1 className="font-headline text-3xl font-bold text-primary">
-              Hello, {userProfile?.name?.split(' ')[0] || user?.displayName?.split(' ')[0] || 'Student'}
-            </h1>
-          </div>
+        <div className="flex items-center gap-3 border-b pb-4">
+          {(userProfile?.photoURL || user.photoURL) && (
+            <img
+              src={userProfile?.photoURL || user.photoURL || ''}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="h-11 w-11 rounded-full border border-primary/20 object-cover shrink-0"
+            />
+          )}
+          <h1 className="font-headline text-3xl font-bold text-primary">
+            Hello, {userProfile?.name?.split(' ')[0] || user.displayName?.split(' ')[0] || ''}
+          </h1>
         </div>
       )}
 

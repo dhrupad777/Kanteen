@@ -43,20 +43,13 @@ export default function CartPage() {
     // Razorpay checkout
     const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
         onSuccess: (response) => {
-            // Save order summary for success page
-            sessionStorage.setItem('lastOrderSummary', JSON.stringify({
-                items: items.map(item => ({ name: item.name, quantity: item.qty, price: item.price })),
-                total: finalTotal,
-                isParcel: isParcel,
-            }));
-            // OTP is generated when order is marked "Ready" by staff, not at payment time
             clearCart();
-            toast({
-                title: "Order Placed Successfully!",
-                description: `Token: ${response.token}`,
-                variant: "default",
-            });
-            router.push(`/order/success?token=${response.token}&orderId=${response.orderId}`);
+            // Store confirmation for the student dashboard toast
+            sessionStorage.setItem('orderConfirmed', JSON.stringify({
+                token: response.token,
+                orderId: response.orderId,
+            }));
+            router.push('/student');
         },
         onError: (error) => {
             toast({
@@ -315,7 +308,7 @@ export default function CartPage() {
                                     description: "Please login to complete your order.",
                                     variant: "destructive",
                                 });
-                                router.push('/login?redirect=/cart');
+                                router.push('/order');
                                 return;
                             }
                             setProcessing(true);
