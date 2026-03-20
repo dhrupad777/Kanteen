@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import Razorpay from 'razorpay';
 import { verifyWebhookSignature, generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { enqueuePrintJobTransaction } from '@/lib/print-queue';
 
 const CAMPUS_ID = 'default';
 const OTP_EXPIRY_MINUTES = 30;
@@ -235,6 +236,22 @@ export async function POST(request: NextRequest) {
                     dateKey: dateKey,
                     'audit.updatedAt': FieldValue.serverTimestamp(),
                     'audit.updatedBy': 'webhook',
+                });
+
+                // ====== ENQUEUE PRINT JOB (ATOMIC WITH ORDER CONFIRMATION) ======
+                // This mirrors verify-payment's print job enqueue. For UPI payments the
+                // webhook processes the payment before the client handler fires, so without
+                // this the receipt would never be printed (handler skips verifyPayment when
+                // the Firestore listener already resolved the order).
+                enqueuePrintJobTransaction(transaction, orderId, {
+                    orderId,
+                    token: nextToken,
+                    items: currentOrderData.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
+                    studentName: currentOrderData.userName || undefined,
+                    studentEmail: currentOrderData.userEmail || undefined,
+                    note: currentOrderData.note || undefined,
+                    isParcel: currentOrderData.isParcel || false,
+                    createdAt: now.toISOString(),
                 });
 
                 // Mark webhook event as processed

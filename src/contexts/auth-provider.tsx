@@ -58,10 +58,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     getRedirectResult(auth).then((result) => {
       sessionStorage.removeItem(REDIRECT_PENDING_KEY);
-      setProcessingRedirect(false);
       if (result?.user) {
+        // Set user immediately so the sign-in screen never flashes in the gap
+        // between processingRedirect becoming false and onAuthStateChanged firing.
+        setUser(result.user);
         router.replace('/student');
       }
+      setProcessingRedirect(false);
     }).catch((error) => {
       console.error('[Auth] getRedirectResult failed:', error?.code, error?.message);
       sessionStorage.removeItem(REDIRECT_PENDING_KEY);

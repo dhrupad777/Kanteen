@@ -157,6 +157,10 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                 // Guard against duplicate resolution (handler vs Firestore listener)
                 let resolved = false;
                 let unsubscribeFirestore: (() => void) | null = null;
+                // Last failure reason from payment.failed — shown when the student
+                // closes the modal without retrying, so they see the real cause
+                // (e.g. "Insufficient funds") not just "Payment cancelled".
+                let lastFailureReason: string | null = null;
 
                 const handleSuccess = (result: VerifyPaymentResponse, paymentMeta?: Pick<VerifyPaymentResponse, 'paymentContact' | 'paymentMethod' | 'paymentVpa'>) => {
                     if (resolved) return;
@@ -260,11 +264,17 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                             if (!resolved) {
                                 unsubscribeFirestore?.();
                                 setLoading(false);
-                                options.onCancel?.();
-                                reject(new Error('Payment cancelled'));
+                                if (lastFailureReason) {
+                                    // Payment actually failed (insufficient funds etc.) — show
+                                    // the real reason now that the modal is closed and visible.
+                                    options.onError?.(lastFailureReason);
+                                    reject(new Error(lastFailureReason));
+                                } else {
+                                    options.onCancel?.();
+                                    reject(new Error('Payment cancelled'));
+                                }
                             }
-                            // If already resolved (payment succeeded), do nothing — the
-                            // success callback has already been called.
+                            // If already resolved (payment succeeded), do nothing.
                         },
                         escape: true,
                         backdropclose: false,
@@ -276,14 +286,11 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                 const razorpay = new window.Razorpay(razorpayOptions);
                 razorpay.on('payment.failed', (response: any) => {
                     if (resolved) return;
-                    // Keep the Firestore listener alive and do NOT reject the Promise.
-                    // Razorpay shows a "Retry" button inside the same modal — if the student
-                    // adds funds and retries, handler() will fire and we must still be able
-                    // to resolve. ondismiss handles the case where they close without retrying.
+                    // Keep Firestore listener alive — student can retry within this modal.
+                    // Store reason so ondismiss can show it once the modal is gone.
+                    lastFailureReason = response.error?.description || 'Payment failed. Please try again.';
                     setLoading(false);
-                    const errorMsg = response.error?.description || 'Payment failed. You can retry.';
-                    setError(errorMsg);
-                    options.onError?.(errorMsg);
+                    setError(lastFailureReason);
                 });
                 razorpay.open();
             });
