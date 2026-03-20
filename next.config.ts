@@ -4,8 +4,8 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   typescript: { ignoreBuildErrors: false },
 
-  // Prevent firebase-admin from being bundled - it needs to run as-is in Node.js
-  serverExternalPackages: ['firebase-admin'],
+  // Prevent these packages from being bundled - they run as-is in Node.js
+  serverExternalPackages: ['firebase-admin', 'web-push'],
 
   // Image optimization
   images: {
@@ -60,7 +60,9 @@ const nextConfig: NextConfig = {
             value: [
               "default-src 'self'",
               // Firebase & Google services
-              "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com",
+              "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com https://fcm.googleapis.com",
+              // Service worker
+              "worker-src 'self'",
               // Razorpay checkout + Firebase Auth popup iframe
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://apis.google.com",
               "frame-src https://api.razorpay.com https://checkout.razorpay.com https://*.firebaseapp.com https://accounts.google.com",

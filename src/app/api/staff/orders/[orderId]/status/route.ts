@@ -5,6 +5,7 @@ import { validateTransition, getActorRoleFromToken, OrderStatus } from '@/lib/or
 import { generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
 import { logAuditEvent, getClientIP, getUserAgent } from '@/lib/audit-logger';
 import { updateDailyReportOnCompletion } from '@/lib/reports-admin';
+import { sendOrderReadyNotification } from '@/lib/push-notifications';
 import { rateLimit } from '@/lib/rate-limit';
 
 /**
@@ -169,6 +170,11 @@ export async function POST(
                 token: orderData.token,
             },
         });
+
+        // Send push notification when order is marked Ready
+        if (status === 'Ready' && orderData.studentId) {
+            sendOrderReadyNotification(orderId, orderData.studentId, orderData.token).catch(() => {});
+        }
 
         // If newly completed, update the daily report and cleanup note
         if (status === 'Completed' && orderData.status !== 'Completed') {

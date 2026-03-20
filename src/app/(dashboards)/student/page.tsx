@@ -1,21 +1,34 @@
 "use client";
 
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff } from 'lucide-react';
+import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import Link from "next/link";
 import { MenuDisplay } from '@/components/menu-display';
 import { StudentDashboardSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
 
 export default function StudentDashboardPage() {
   const { orders, loading: ordersLoading } = useOrders();
   const { user, userProfile, loading: authLoading } = useAuth();
+
+  const { supported, permission, subscribed, iosNeedsInstall, subscribe, unsubscribe, loading: pushLoading } = usePushNotifications();
+
+  const handleBellClick = useCallback(async () => {
+    if (!user) return;
+    const token = await user.getIdToken();
+    if (subscribed) {
+      await unsubscribe(token);
+    } else {
+      await subscribe(token);
+    }
+  }, [user, subscribed, subscribe, unsubscribe]);
 
   // Order confirmation popup state
   const [orderConfirmed, setOrderConfirmed] = useState<{ token: number; orderId: string } | null>(null);
@@ -171,10 +184,47 @@ export default function StudentDashboardPage() {
       </AnimatePresence>
 
       {user && (
-        <div className="flex items-center gap-3 border-b pb-4">
+        <div className="flex items-center justify-between gap-3 border-b pb-4">
           <h1 className="font-headline text-3xl font-bold text-primary">
             Hello, {userProfile?.name?.split(' ')[0] || user.displayName?.split(' ')[0] || ''}
           </h1>
+
+          {/* Notification bell — only shown for logged-in users on supported browsers */}
+          {supported && !iosNeedsInstall && permission !== 'denied' && (
+            <button
+              onClick={handleBellClick}
+              disabled={pushLoading}
+              title={subscribed ? 'Notifications on — tap to turn off' : 'Tap to get notified when your order is ready'}
+              className={cn(
+                "relative p-2 rounded-full transition-all active:scale-95",
+                subscribed
+                  ? "text-orange-500 bg-orange-50 hover:bg-orange-100"
+                  : "text-gray-400 hover:text-orange-500 hover:bg-orange-50"
+              )}
+            >
+              {subscribed
+                ? <Bell className="w-5 h-5 fill-orange-500 text-orange-500" />
+                : <Bell className="w-5 h-5" />
+              }
+              {subscribed && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full ring-2 ring-white" />
+              )}
+            </button>
+          )}
+
+          {/* iOS: needs PWA install first */}
+          {supported && iosNeedsInstall && (
+            <span className="text-[10px] text-muted-foreground text-right leading-tight max-w-[120px]">
+              Add to Home Screen to enable notifications
+            </span>
+          )}
+
+          {/* Permission blocked */}
+          {supported && permission === 'denied' && (
+            <span title="Allow notifications in your browser settings" className="p-2">
+              <BellOff className="w-5 h-5 text-gray-300" />
+            </span>
+          )}
         </div>
       )}
 

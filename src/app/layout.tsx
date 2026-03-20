@@ -22,6 +22,15 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: 'Kanteen MRC',
   description: 'Canteen Order Management System',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Kanteen MRC',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
 };
 
 const GA_MEASUREMENT_ID = "G-9FCB95HMZ5";
@@ -35,6 +44,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="theme-color" content="#FF8C00" />
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+        <Script
+          id="register-sw"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function(){}); }`,
+          }}
+        />
         <Script
           strategy="afterInteractive"
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
