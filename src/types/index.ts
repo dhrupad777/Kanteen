@@ -48,6 +48,19 @@ export interface DailyMenu {
     dal: string;
     bread: string;
     rice: string;
+    salad?: string;
+    sweet?: string;
+    papad?: string;
+    /** Per-item prices for online ordering. If a price is set the item appears as orderable. */
+    prices?: {
+      sabji?: number;
+      dal?: number;
+      bread?: number;
+      rice?: number;
+      salad?: number;
+      sweet?: number;
+      papad?: number;
+    };
   };
   snacks: string[];
   special: string[];
@@ -122,7 +135,10 @@ export interface VerifyPaymentResponse {
   success: boolean;
   orderId: string;
   token: number;
-  // OTP is generated when order is marked "Ready" by staff, not at payment time
+  /** Returned once after payment so the client can cache it for future pre-fills. */
+  paymentContact?: string; // e.g. "+919876543210"
+  paymentMethod?: string;  // 'upi' | 'card' | 'netbanking' | 'wallet'
+  paymentVpa?: string;     // e.g. "user@ybl" (only when method = 'upi')
 }
 
 // ============================================================

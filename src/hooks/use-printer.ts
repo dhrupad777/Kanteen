@@ -184,7 +184,7 @@ export function usePrinter() {
         r += ESCPOS.INIT;
         r += ESCPOS.ALIGN_CENTER;
         r += ESCPOS.BOLD_ON + ESCPOS.DOUBLE_HEIGHT;
-        r += 'KANTEEN\n';
+        r += 'MRC X Kanteen\n';
         r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
 
         // Token number — biggest thing on the receipt
@@ -255,11 +255,11 @@ export function usePrinter() {
 
         r += divider();
 
-        // ── PARCEL / DINE-IN — large, unmissable ──────────────────
+        // ── PARCEL / ONLINE-ORDER — large, unmissable ─────────────
         r += divider('=');
         r += ESCPOS.ALIGN_CENTER;
         r += ESCPOS.DOUBLE_SIZE + ESCPOS.BOLD_ON;
-        r += (job.isParcel || job.type === 'takeaway') ? 'PARCEL\n' : 'DINE-IN\n';
+        r += (job.isParcel || job.type === 'takeaway') ? 'PARCEL\n' : 'ONLINE-ORDER\n';
         r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
         r += divider('=');
 

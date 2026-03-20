@@ -274,7 +274,11 @@ export async function POST(request: NextRequest) {
             success: true,
             orderId: result.orderId,
             token: result.token,
-            // OTP is generated when order is marked "Ready" by staff
+            // Return payment method details so the client can cache them for
+            // pre-filling the next checkout (saves the student from re-entering their number).
+            ...(payment.contact ? { paymentContact: String(payment.contact) } : {}),
+            ...(payment.method ? { paymentMethod: String(payment.method) } : {}),
+            ...(payment.vpa ? { paymentVpa: String(payment.vpa) } : {}),
         };
 
         return NextResponse.json(response);

@@ -2,26 +2,19 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-    // Add your middleware logic here
-    // For example, protecting admin routes
-
     const response = NextResponse.next();
 
-    // Security headers can also be added here if not in next.config.ts, 
-    // but next.config.ts is preferred for static headers.
+    // Security headers — industry standard for web apps
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('X-Frame-Options', 'DENY');
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
     return response;
 }
 
 export const config = {
     matcher: [
-        /*
-         * Match all request paths except for the ones starting with:
-         * - api (API routes)
-         * - _next/static (static files)
-         * - _next/image (image optimization files)
-         * - favicon.ico (favicon file)
-         */
         '/((?!api|_next/static|_next/image|favicon.ico).*)',
     ],
 };

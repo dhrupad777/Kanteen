@@ -25,7 +25,8 @@ export type MenuCategory =
     | 'paratha'
     | 'chinese'
     | 'sabji'
-    | 'indian_rice';
+    | 'indian_rice'
+    | 'daily_menu'; // virtual category for daily-menu orderable items (not in MENU_CATEGORIES grid)
 
 export const MENU_CATEGORIES: { value: MenuCategory; label: string }[] = [
     { value: 'tea_beverage', label: 'Tea & Beverages' },

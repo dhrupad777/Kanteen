@@ -1,5 +1,5 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, indexedDBLocalPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -17,6 +17,17 @@ export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// Explicitly persist the auth session in IndexedDB (falls back to localStorage).
+// This guarantees users stay signed in across browser sessions and tab closes
+// regardless of Firebase SDK default changes in the future.
+// Only runs on the client — SSR has no IndexedDB.
+if (typeof window !== 'undefined') {
+  setPersistence(auth, indexedDBLocalPersistence).catch(() => {
+    // IndexedDB unavailable (e.g. private browsing on some browsers) — fall back to localStorage.
+    setPersistence(auth, browserLocalPersistence).catch(() => {});
+  });
+}
 
 // Analytics must NEVER run during SSR/build
 export async function getClientAnalytics() {

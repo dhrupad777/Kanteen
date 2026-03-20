@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import type { UserProfile } from "@/types";
-import { signInWithGoogle as googleSignIn, BYPASS_AUTH } from '@/lib/auth';
+import { signInWithGoogle as googleSignIn, BYPASS_AUTH, REDIRECT_PENDING_KEY } from '@/lib/auth';
 
 // Mock user for testing (simulates a logged-in user)
 const MOCK_USER = {
@@ -31,6 +31,8 @@ interface AuthContextType {
   user: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
+  /** True while getRedirectResult is still in-flight after a Google redirect. Prevents sign-in button flash. */
+  processingRedirect: boolean;
   signInWithEmail: (email: string, password: string) => Promise<any>;
   signInWithGoogle: () => Promise<any>;
   signOutUser: () => Promise<void>;
@@ -42,18 +44,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(BYPASS_AUTH ? MOCK_USER : null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(BYPASS_AUTH ? MOCK_USER_PROFILE : null);
   const [loading, setLoading] = useState(!BYPASS_AUTH);
+  // Always true on first render — cleared only after getRedirectResult resolves (fast if no
+  // redirect is in progress). This prevents any flash of the sign-in screen on every load,
+  // not just when the sessionStorage key happens to be set.
+  const [processingRedirect, setProcessingRedirect] = useState(!BYPASS_AUTH);
   const router = useRouter();
 
-  // Handle Google redirect result on mobile (fires once after the page reloads post-redirect)
+  // Always call getRedirectResult on mount — it resolves in ~1 frame when there's no
+  // pending redirect (fast no-op), and correctly processes the result when there is one.
+  // This, combined with processingRedirect starting as true, eliminates any sign-in flash.
   useEffect(() => {
-    if (BYPASS_AUTH) return;
+    if (BYPASS_AUTH) { setProcessingRedirect(false); return; }
+
     getRedirectResult(auth).then((result) => {
+      sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+      setProcessingRedirect(false);
       if (result?.user) {
-        // After mobile Google sign-in redirect, always land on the student dashboard
         router.replace('/student');
       }
-    }).catch(() => {
-      // Redirect result errors are non-fatal; onAuthStateChanged handles the session
+    }).catch((error) => {
+      console.error('[Auth] getRedirectResult failed:', error?.code, error?.message);
+      sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+      setProcessingRedirect(false);
     });
   }, [router]);
 
@@ -142,6 +154,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     user,
     userProfile,
     loading,
+    processingRedirect,
     signInWithEmail,
     signInWithGoogle,
     signOutUser,

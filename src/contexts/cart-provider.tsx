@@ -121,6 +121,8 @@ interface CartContextType {
     isHydrated: boolean;
     totalItems: number;
     totalPrice: number;
+    /** True when the cart contains at least one daily-menu item (parcel must be forced ON). */
+    hasDailyItems: boolean;
     addItem: (item: MenuItem) => void;
     removeItem: (itemId: string) => void;
     increment: (itemId: string) => void;
@@ -192,6 +194,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }, [state.items, state.isHydrated]);
 
     // Computed values
+    const hasDailyItems = state.items.some(item => item.category === 'daily_menu');
     const totalItems = state.items.reduce((sum, item) => sum + item.qty, 0);
     const totalPrice = state.items.reduce((sum, item) => {
         if (!item.price || isNaN(item.price)) {
@@ -246,6 +249,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 isHydrated: state.isHydrated,
                 totalItems,
                 totalPrice,
+                hasDailyItems,
                 addItem,
                 removeItem,
                 increment,

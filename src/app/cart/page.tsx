@@ -16,9 +16,11 @@ export default function CartPage() {
     const router = useRouter();
     const { toast } = useToast();
     const { user } = useAuth();
-    const { items, isHydrated, totalItems, totalPrice, increment, decrement, removeItem, clearCart, getCheckoutItems } = useCart();
+    const { items, isHydrated, totalItems, totalPrice, hasDailyItems, increment, decrement, removeItem, clearCart, getCheckoutItems } = useCart();
     const [processing, setProcessing] = useState(false);
-    const [isParcel, setIsParcel] = useState(false);
+    const [_isParcel, setIsParcel] = useState(false);
+    // Daily menu items always require parcel — lock it ON and disable the toggle
+    const isParcel = hasDailyItems || _isParcel;
     const [note, setNote] = useState('');
 
     // Real-time availability check — fetch all active items (including unavailable ones)
@@ -49,7 +51,7 @@ export default function CartPage() {
                 token: response.token,
                 orderId: response.orderId,
             }));
-            router.push('/student');
+            router.replace('/student');
         },
         onError: (error) => {
             toast({
@@ -230,17 +232,22 @@ export default function CartPage() {
                         </div>
 
                         {/* Parcel Toggle */}
-                        <div className="flex items-center justify-between px-2 py-3 bg-gray-50 rounded-xl border border-gray-200">
+                        <div className={`flex items-center justify-between px-2 py-3 rounded-xl border ${hasDailyItems ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-200'}`}>
                             <div className="flex items-center gap-3">
-                                <Package className="h-5 w-5 text-gray-600" />
+                                <Package className={`h-5 w-5 ${hasDailyItems ? 'text-orange-500' : 'text-gray-600'}`} />
                                 <div className="flex flex-col">
                                     <span className="font-medium text-gray-900">Parcel Order</span>
-                                    <span className="text-xs text-gray-500">Add packaging (+₹{parcelCharge})</span>
+                                    {hasDailyItems
+                                        ? <span className="text-xs text-orange-600 font-medium">Required for Daily Menu items (+₹{parcelCharge})</span>
+                                        : <span className="text-xs text-gray-500">Add packaging (+₹{parcelCharge})</span>
+                                    }
                                 </div>
                             </div>
                             <Switch
                                 checked={isParcel}
-                                onCheckedChange={setIsParcel}
+                                onCheckedChange={hasDailyItems ? undefined : setIsParcel}
+                                disabled={hasDailyItems}
+                                className={hasDailyItems ? 'opacity-80' : ''}
                             />
                         </div>
 

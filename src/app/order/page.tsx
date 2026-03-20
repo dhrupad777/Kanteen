@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { signInWithGoogle, createStudentProfile, checkStudentProfileExists } from "@/lib/auth";
+import { signInWithGoogle, isInAppBrowser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, ArrowLeft, Utensils, Coffee, Soup, Sandwich, Disc, CircleDot, ChefHat, UtensilsCrossed, Carrot, Spline } from "lucide-react";
+import { Search, ArrowLeft, Utensils, Coffee, Soup, Sandwich, Disc, CircleDot, ChefHat, UtensilsCrossed, Carrot, Spline, Plus, Minus, Package } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useRouter } from "next/navigation";
+import { useMenu } from "@/hooks/use-menu";
 
 // Order-specific imports
 import { useCart } from "@/contexts/cart-provider";
@@ -54,26 +55,26 @@ const CATEGORY_IMAGES: Partial<Record<MenuCategory, string>> = {
 };
 
 function OrderContent() {
-    const { user, userProfile, loading } = useAuth();
+    const { user, userProfile, loading, processingRedirect } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
-    const [name, setName] = useState("");
-    const [submitting, setSubmitting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const debouncedSearchQuery = useDebounce(searchQuery, 300); // Debounce search for performance
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-    // Profile checking
-    const [checkingProfile, setCheckingProfile] = useState(true);
-    const [profileExists, setProfileExists] = useState(false);
+    // In-app browser (Instagram, Facebook, etc.) — detected once on mount
+    const [inAppBrowser] = useState(() => typeof window !== 'undefined' && isInAppBrowser());
 
     // Menu items — only show items that are currently available
     const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({ includeUnavailable: false });
 
+    // Daily menu (for orderable daily items)
+    const { menu: dailyMenu } = useMenu();
+
     // Cart
-    const { totalItems, totalPrice, getCheckoutItems, clearCart } = useCart();
+    const { totalItems, totalPrice, hasDailyItems, getCheckoutItems, clearCart, addItem, getItemQty, decrement } = useCart();
 
     // Razorpay
-    const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
+    const { checkout: razorpayCheckout } = useRazorpay({
         onSuccess: (response) => {
             // OTP is now generated when order is marked "Ready" by staff, not at payment time
             clearCart();
@@ -82,7 +83,8 @@ function OrderContent() {
                 token: response.token,
                 orderId: response.orderId,
             }));
-            router.push('/student');
+            // replace() so the user can't accidentally navigate back to the payment page
+            router.replace('/student');
         },
         onError: (error) => {
             // Distinguish verification failures (money may have been taken) from payment failures (money not taken)
@@ -94,47 +96,22 @@ function OrderContent() {
                     : error,
                 variant: "destructive",
             });
-            setSubmitting(false);
         },
         onCancel: () => {
             toast({
                 title: "Payment cancelled",
                 description: "You cancelled the payment. Your cart is still saved.",
             });
-            setSubmitting(false);
         },
     });
 
-    useEffect(() => {
-        if (loading) return;
-        if (!user) {
-            setCheckingProfile(false);
-            return;
-        }
-        // auth-provider already created/synced the Firestore profile on sign-in.
-        // userProfile being non-null means it's ready; a null userProfile with a
-        // uid means the doc write is still in-flight — treat that as "exists" too
-        // so we don't show the name form for valid Google users.
-        if (userProfile) {
-            setProfileExists(true);
-            setCheckingProfile(false);
-        } else {
-            // Doc may still be writing; fall back to a direct check
-            checkStudentProfileExists(user.uid).then((exists) => {
-                setProfileExists(exists);
-                setCheckingProfile(false);
-            }).catch(() => setCheckingProfile(false));
-        }
-    }, [user, userProfile, loading]);
-
     async function handleGoogleSignIn() {
         try {
-            const result = await signInWithGoogle();
-            // Desktop popup: result is the user — navigate to dashboard
-            // Mobile redirect: result is null (page navigates away); auth-provider handles the redirect
-            if (result) {
-                router.replace('/student');
-            }
+            await signInWithGoogle();
+            // Popup: onAuthStateChanged fires → auth context updates → this page re-renders
+            //        showing the menu directly. No manual navigation needed.
+            // Redirect fallback (popup-blocked): page navigates away to Google; auth-provider
+            //        handles the result on return.
         } catch (error: any) {
             console.error("Sign in failed", error);
             if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
@@ -145,30 +122,6 @@ function OrderContent() {
                 description: error?.message || "Could not sign in with Google. Please try again.",
                 variant: "destructive",
             });
-        }
-    }
-
-    async function handleNameSubmit(e: React.FormEvent) {
-        e.preventDefault();
-        if (!user || !name.trim()) return;
-
-        setSubmitting(true);
-        try {
-            await createStudentProfile(user.uid, {
-                name: name.trim(),
-                email: user.email || "",
-                photoURL: user.photoURL || ""
-            });
-            setProfileExists(true);
-        } catch (error: any) {
-            console.error("Error creating profile:", error);
-            toast({
-                title: "Setup failed",
-                description: "Could not save your name. Please check your connection and try again.",
-                variant: "destructive",
-            });
-        } finally {
-            setSubmitting(false);
         }
     }
 
@@ -191,12 +144,11 @@ function OrderContent() {
             return;
         }
 
-        setSubmitting(true);
         try {
             const checkoutItems = getCheckoutItems();
             await razorpayCheckout({
                 items: checkoutItems,
-                isParcel: false,
+                isParcel: hasDailyItems, // force parcel when daily menu items are in cart
                 platformCharges: 0,
             });
             // Success is handled by onSuccess callback
@@ -207,6 +159,20 @@ function OrderContent() {
             }
         }
     }
+
+    // Daily menu items with a price set — these are orderable as parcel-only
+    const dailyOrderableItems = useMemo(() => {
+        if (!dailyMenu?.main) return [];
+        const fields = ['sabji', 'dal', 'bread', 'rice', 'salad', 'sweet', 'papad'] as const;
+        return fields
+            .map(f => {
+                const name = (dailyMenu.main as any)[f] as string | undefined;
+                const price = dailyMenu.main.prices?.[f];
+                if (!name?.trim() || typeof price !== 'number' || price <= 0) return null;
+                return { id: `daily_${f}`, name: name.trim(), price };
+            })
+            .filter((x): x is { id: string; name: string; price: number } => x !== null);
+    }, [dailyMenu]);
 
     // Filter items by debounced search query (memoized for performance)
     const filteredItems = useMemo(() => {
@@ -225,13 +191,39 @@ function OrderContent() {
         }, {} as Record<MenuCategory, MenuItem[]>);
     }, [menuItems]);
 
-    // Loading state - show skeleton for better perceived performance
-    if (loading || checkingProfile) {
+    // Loading state - processingRedirect guards against the brief "Sign in" flash
+    // that can appear if onAuthStateChanged fires null before the redirect result resolves.
+    if (loading || processingRedirect) {
         return <OrderPageSkeleton />;
     }
 
-    // State 1: Not Signed In - Orange Theme
+    // State 1: Not Signed In
     if (!user) {
+        // In-app browser (Instagram, Facebook, Snapchat, Telegram, etc.)
+        // Both popup and redirect are broken inside these browsers.
+        // Show a clear instruction to open in a real browser instead.
+        if (inAppBrowser) {
+            return (
+                <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
+                    <div className="w-full max-w-sm text-center">
+                        <div className="w-20 h-20 mx-auto mb-8 rounded-[22px] bg-primary flex items-center justify-center shadow-lg shadow-orange-200">
+                            <Utensils className="h-10 w-10 text-white" />
+                        </div>
+                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-2">Open in your browser</h1>
+                        <p className="text-gray-500 mb-6">
+                            Google sign-in doesn&apos;t work inside apps like Instagram or Facebook.
+                        </p>
+                        <p className="text-gray-400 text-sm mb-8">
+                            Tap the <span className="font-semibold text-gray-600">&#8942;</span> menu (or share icon) and choose <span className="font-semibold text-gray-600">&ldquo;Open in Chrome&rdquo;</span> or <span className="font-semibold text-gray-600">&ldquo;Open in Safari&rdquo;</span>.
+                        </p>
+                        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 text-sm text-orange-800 font-mono break-all select-all">
+                            kanteen-mrc-live.web.app/order
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
                 <div className="w-full max-w-sm text-center">
@@ -270,51 +262,7 @@ function OrderContent() {
         );
     }
 
-    // State 2: Signed In, Missing Name - Orange Theme
-    if (!profileExists && !userProfile) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
-                <div className="w-full max-w-sm">
-                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-2 text-center">
-                        Welcome! 👋
-                    </h1>
-                    <p className="text-gray-500 mb-8 text-center">
-                        What should we call you?
-                    </p>
-
-                    <form onSubmit={handleNameSubmit} className="space-y-4">
-                        <div>
-                            <Input
-                                id="name"
-                                placeholder="Enter your name"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                required
-                                minLength={2}
-                                className={cn(
-                                    "h-14 text-base px-4 rounded-2xl border-gray-200",
-                                    "focus:ring-2 focus:ring-primary focus:border-transparent"
-                                )}
-                            />
-                        </div>
-                        <Button
-                            type="submit"
-                            className={cn(
-                                "w-full h-14 text-base font-semibold rounded-2xl",
-                                "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
-                            )}
-                            disabled={submitting}
-                        >
-                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Continue
-                        </Button>
-                    </form>
-                </div>
-            </div>
-        );
-    }
-
-    // State 3: Fully Authenticated -> Order Page
+    // State 2: Fully Authenticated -> Order Page
     return (
         <div className="min-h-screen bg-gray-50 pb-28 md:pb-6 overflow-x-hidden">
             {/* Header */}
@@ -384,6 +332,49 @@ function OrderContent() {
                                 {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                                     <CategoryCardSkeleton key={i} />
                                 ))}
+                            </div>
+                        )}
+
+                        {/* Daily Menu orderable items */}
+                        {!debouncedSearchQuery && dailyOrderableItems.length > 0 && (
+                            <div className="mb-4 sm:mb-6">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Daily Menu</h2>
+                                    <span className="flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">
+                                        <Package className="w-3 h-3" /> Parcel only
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+                                    {dailyOrderableItems.map(item => {
+                                        const qty = getItemQty(item.id);
+                                        return (
+                                            <div key={item.id} className="bg-white rounded-2xl border border-gray-100 p-3 shadow-sm flex flex-col gap-2">
+                                                <div>
+                                                    <p className="font-semibold text-sm text-gray-900 truncate">{item.name}</p>
+                                                    <p className="text-xs text-gray-500">₹{item.price}</p>
+                                                </div>
+                                                {qty === 0 ? (
+                                                    <button
+                                                        onClick={() => addItem({ id: item.id, name: item.name, price: item.price, category: 'daily_menu', isActive: true, isAvailable: true, sortOrder: 0 })}
+                                                        className="w-full py-1.5 bg-orange-500 hover:bg-orange-600 active:scale-[0.97] text-white text-xs font-semibold rounded-xl transition-all"
+                                                    >
+                                                        Add
+                                                    </button>
+                                                ) : (
+                                                    <div className="flex items-center justify-between bg-orange-50 rounded-xl px-1 py-0.5">
+                                                        <button onClick={() => decrement(item.id)} className="h-7 w-7 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                                                            <Minus className="h-3 w-3 text-gray-600" />
+                                                        </button>
+                                                        <span className="font-bold text-sm text-orange-600">{qty}</span>
+                                                        <button onClick={() => addItem({ id: item.id, name: item.name, price: item.price, category: 'daily_menu', isActive: true, isAvailable: true, sortOrder: 0 })} className="h-7 w-7 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                                                            <Plus className="h-3 w-3 text-gray-600" />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
 

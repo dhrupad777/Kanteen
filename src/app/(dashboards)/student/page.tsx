@@ -5,7 +5,7 @@ import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X } from 'lucide-react';
+import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import Link from "next/link";
@@ -17,8 +17,16 @@ export default function StudentDashboardPage() {
   const { orders, loading: ordersLoading } = useOrders();
   const { user, userProfile, loading: authLoading } = useAuth();
 
-  // Order confirmation toast state
+  // Order confirmation popup state
   const [orderConfirmed, setOrderConfirmed] = useState<{ token: number; orderId: string } | null>(null);
+  const SUPPRESS_KEY = 'kanteen_suppress_order_popup';
+
+  const dismissPopup = () => setOrderConfirmed(null);
+
+  const dismissAndSuppress = () => {
+    localStorage.setItem(SUPPRESS_KEY, '1');
+    setOrderConfirmed(null);
+  };
 
   // Auth check removed - dashboard is public
 
@@ -28,14 +36,16 @@ export default function StudentDashboardPage() {
   useEffect(() => {
     const data = sessionStorage.getItem('orderConfirmed');
     if (data) {
+      sessionStorage.removeItem('orderConfirmed');
+      // Skip popup if user has opted out
+      if (localStorage.getItem(SUPPRESS_KEY) === '1') return;
       try {
         setOrderConfirmed(JSON.parse(data));
-        sessionStorage.removeItem('orderConfirmed');
-        // Auto-dismiss after 5 seconds
-        const timer = setTimeout(() => setOrderConfirmed(null), 5000);
+        // Auto-dismiss after 8 seconds
+        const timer = setTimeout(() => setOrderConfirmed(null), 8000);
         return () => clearTimeout(timer);
       } catch (e) {
-        sessionStorage.removeItem('orderConfirmed');
+        // malformed data — silently discard
       }
     }
   }, []);
@@ -49,24 +59,22 @@ export default function StudentDashboardPage() {
     [orders, user?.uid]
   );
 
-  // Offline orders being prepared (coupon grid entries visible to all)
+  // Offline/walk-in orders being prepared — visible to everyone (all logged-in or guest users)
   const publicPreparingOrders = useMemo(() =>
     orders.filter(o =>
       o.status === 'Preparing' &&
-      (!o.token || o.token < 201) && // Offline tokens (1-200) or no token
-      o.studentId !== user?.uid
+      (!o.token || o.token < 201) // Offline tokens (1-200) or no token
     ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
-    [orders, user?.uid]
+    [orders]
   );
 
-  // Offline orders ready for pickup
+  // Offline/walk-in orders ready for pickup — visible to everyone
   const publicReadyOrders = useMemo(() =>
     orders.filter(o =>
       o.status === 'Ready' &&
-      (!o.token || o.token < 201) && // Offline tokens (1-200) or no token
-      o.studentId !== user?.uid
+      (!o.token || o.token < 201) // Offline tokens (1-200) or no token
     ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
-    [orders, user?.uid]
+    [orders]
   );
 
   if (loading) {
@@ -82,14 +90,14 @@ export default function StudentDashboardPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-            onClick={() => setOrderConfirmed(null)}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={dismissPopup}
           >
             <motion.div
-              initial={{ opacity: 0, y: 100, scale: 0.9 }}
+              initial={{ opacity: 0, y: 80, scale: 0.92 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 50, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              exit={{ opacity: 0, y: 40, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 320, damping: 28 }}
               className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
@@ -97,45 +105,64 @@ export default function StudentDashboardPage() {
               <motion.div
                 initial={{ scaleX: 1 }}
                 animate={{ scaleX: 0 }}
-                transition={{ duration: 5, ease: "linear" }}
-                className="absolute top-0 left-0 right-0 h-1 bg-green-500 origin-left"
+                transition={{ duration: 8, ease: "linear" }}
+                className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-orange-400 to-orange-600 origin-left"
               />
 
-              {/* Dismiss button */}
+              {/* Close (X) button */}
               <button
-                onClick={() => setOrderConfirmed(null)}
-                className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                onClick={dismissPopup}
+                className="absolute top-3 right-3 p-1.5 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors"
+                aria-label="Close"
               >
-                <X className="w-4 h-4 text-gray-400" />
+                <X className="w-4 h-4" />
               </button>
 
-              <div className="p-6 text-center">
+              <div className="px-6 pt-7 pb-5 text-center">
                 {/* Success icon */}
                 <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: 0.15, type: "spring", stiffness: 200 }}
+                  initial={{ scale: 0, rotate: -15 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.1, type: "spring", stiffness: 220 }}
                   className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3"
                 >
-                  <CheckCircle2 className="w-7 h-7 text-green-600" />
+                  <CheckCircle2 className="w-7 h-7 text-green-500" />
                 </motion.div>
 
-                <h2 className="text-lg font-bold text-gray-900 mb-1">Order Confirmed!</h2>
+                <h2 className="text-lg font-bold text-gray-900 mb-0.5">Order Confirmed!</h2>
+                <p className="text-xs text-gray-400 mb-3">Your order is now with the kitchen</p>
 
                 {/* Token number */}
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
+                  initial={{ opacity: 0, scale: 0.85 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.25, type: "spring" }}
-                  className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-4 my-3 text-white"
+                  transition={{ delay: 0.2, type: "spring" }}
+                  className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-4 my-1 text-white shadow-lg shadow-orange-200"
                 >
-                  <p className="text-orange-100 text-[10px] font-bold uppercase tracking-widest mb-0.5">Your Token</p>
-                  <p className="text-5xl font-black tracking-tight">{orderConfirmed.token}</p>
+                  <p className="text-orange-200 text-[9px] font-black uppercase tracking-[0.2em] mb-0.5">Your Token</p>
+                  <p className="text-6xl font-black tracking-tight leading-none">{orderConfirmed.token}</p>
                 </motion.div>
 
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mt-2">
-                  <ChefHat className="w-4 h-4 text-blue-500" />
-                  <span>Being prepared — OTP will appear when ready</span>
+                <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mt-3 mb-5">
+                  <ChefHat className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span>OTP appears on your dashboard when order is ready</span>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={dismissPopup}
+                    className="w-full py-3 rounded-2xl bg-orange-500 hover:bg-orange-600 active:scale-[0.98] text-white font-semibold text-sm transition-all"
+                  >
+                    Got it!
+                  </button>
+                  <button
+                    onClick={dismissAndSuppress}
+                    className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-2xl text-gray-400 hover:text-gray-600 hover:bg-gray-50 active:scale-[0.98] text-xs font-medium transition-all"
+                  >
+                    <BellOff className="w-3.5 h-3.5" />
+                    Don&apos;t show this again
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -145,14 +172,6 @@ export default function StudentDashboardPage() {
 
       {user && (
         <div className="flex items-center gap-3 border-b pb-4">
-          {(userProfile?.photoURL || user.photoURL) && (
-            <img
-              src={userProfile?.photoURL || user.photoURL || ''}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="h-11 w-11 rounded-full border border-primary/20 object-cover shrink-0"
-            />
-          )}
           <h1 className="font-headline text-3xl font-bold text-primary">
             Hello, {userProfile?.name?.split(' ')[0] || user.displayName?.split(' ')[0] || ''}
           </h1>
@@ -169,19 +188,26 @@ export default function StudentDashboardPage() {
         />
       )}
 
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-0.5">
+          Daily Menu
+        </span>
+        <span className="text-[10px] text-muted-foreground font-medium">Today&apos;s canteen items</span>
+      </div>
+
       <MenuDisplay />
 
       <Link href="/order" className="block w-full group">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400 via-orange-500 to-red-600 p-1 shadow-lg shadow-orange-500/20 transition-transform duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]">
-          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          <div className="relative flex items-center justify-between bg-white/5 backdrop-blur-sm px-6 py-4 rounded-xl border border-white/20">
-            <div className="flex flex-col text-left">
-              <span className="text-white font-bold text-xl tracking-tight">Order Online</span>
-              <span className="text-orange-50 font-medium text-xs opacity-90">Order. Arrive. Eat.</span>
-            </div>
-            <div className="bg-white/20 p-2.5 rounded-full backdrop-blur-md">
-              <ShoppingBag className="h-6 w-6 text-white" />
-            </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400 via-orange-500 to-red-600 shadow-lg shadow-orange-500/25 transition-transform duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]">
+          {/* Decorative blobs */}
+          <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/10 rounded-full blur-xl pointer-events-none" />
+          <div className="absolute -bottom-6 -left-4 w-32 h-32 bg-orange-300/20 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+          <div className="relative flex flex-col items-center justify-center text-center px-6 py-6 gap-1">
+            <span className="text-white/80 text-[10px] font-black uppercase tracking-[0.25em]">Tap to browse menu</span>
+            <span className="text-white font-black text-2xl tracking-tight leading-tight">Order Online</span>
+            <span className="text-orange-100 text-xs font-medium opacity-80 mt-0.5">Order. Arrive. Eat.</span>
           </div>
         </div>
       </Link>
@@ -199,6 +225,7 @@ export default function StudentDashboardPage() {
       {publicReadyOrders.length > 0 && (
         <DashboardSection
           title="Ready to Collect"
+          badge="Offline order"
           icon={<CupSoda className="w-6 h-6 text-green-800" />}
           orders={publicReadyOrders}
           emptyMessage=""
@@ -223,6 +250,7 @@ export default function StudentDashboardPage() {
 
 interface DashboardSectionProps {
   title: string;
+  badge?: string;
   icon: React.ReactNode;
   orders: Order[];
   emptyMessage: string;
@@ -231,6 +259,7 @@ interface DashboardSectionProps {
 
 function DashboardSection({
   title,
+  badge,
   icon,
   orders,
   emptyMessage,
@@ -240,9 +269,14 @@ function DashboardSection({
     <Card className={cn("border shadow-sm", className)}>
       <CardHeader>
         <CardTitle className="font-headline text-xl md:text-2xl font-bold flex items-center justify-between gap-3 text-foreground/80">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {icon}
             <span>{title} ({orders.length})</span>
+            {badge && (
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70 bg-black/5 rounded-full px-2 py-0.5 normal-case">
+                {badge}
+              </span>
+            )}
           </div>
           {title === "My Orders" && (
             <span className="text-xs font-medium text-muted-foreground italic normal-case flex items-center gap-1">

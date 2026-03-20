@@ -30,17 +30,30 @@ export async function POST(request: NextRequest) {
         const rawBody = await request.text();
 
         // ====== STEP 1: VERIFY WEBHOOK SIGNATURE ======
-        if (webhookSecret && signature) {
-            const isValid = verifyWebhookSignature(rawBody, signature, webhookSecret);
-            if (!isValid) {
-                await logAuditEvent({
-                    eventType: 'SIGNATURE_INVALID',
-                    actorId: 'webhook',
-                    ip: clientIP,
-                    details: { source: 'razorpay_webhook' },
-                });
-                return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
-            }
+        // Both the secret and signature header MUST be present and valid.
+        // Skipping this check would allow anyone to forge payment.captured events.
+        if (!webhookSecret) {
+            console.error('RAZORPAY_WEBHOOK_SECRET is not configured — rejecting webhook');
+            return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
+        }
+        if (!signature) {
+            await logAuditEvent({
+                eventType: 'SIGNATURE_INVALID',
+                actorId: 'webhook',
+                ip: clientIP,
+                details: { source: 'razorpay_webhook', error: 'missing_signature_header' },
+            });
+            return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
+        }
+        const isValid = verifyWebhookSignature(rawBody, signature, webhookSecret);
+        if (!isValid) {
+            await logAuditEvent({
+                eventType: 'SIGNATURE_INVALID',
+                actorId: 'webhook',
+                ip: clientIP,
+                details: { source: 'razorpay_webhook' },
+            });
+            return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
         }
 
         const event = JSON.parse(rawBody);
@@ -113,8 +126,8 @@ export async function POST(request: NextRequest) {
                         return NextResponse.json({ status: 'invalid_currency' }, { status: 400 });
                     }
                 } catch (fetchError) {
-                    console.error('Webhook: Failed to fetch payment from Razorpay');
-                    // Continue with webhook data if API call fails
+                    console.error('Webhook: Failed to fetch payment from Razorpay — aborting to prevent fraud');
+                    return NextResponse.json({ status: 'payment_fetch_failed' }, { status: 502 });
                 }
             }
 

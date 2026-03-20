@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
 import { Order, OrderStatus } from '@/types';
 import { db } from '@/lib/firebase';
-import { collection, doc, addDoc, updateDoc, onSnapshot, query, where, serverTimestamp, Timestamp, deleteDoc, limit, orderBy, runTransaction, getDoc, setDoc } from "firebase/firestore";
+import { collection, doc, addDoc, updateDoc, onSnapshot, query, where, serverTimestamp, Timestamp, deleteDoc, limit, runTransaction, getDoc, setDoc } from "firebase/firestore";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { checkManagerAllowlist } from "@/lib/auth";
@@ -125,7 +125,10 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
             status: data.status,
             token: data.token,
             otpHash: data.otpHash,
-            secretOtp: data.secretOtp, // OTP for display when order is Ready
+            // Only expose the plaintext OTP to the order's owner.
+            // Firestore rules allow any auth'd user to read Preparing/Ready orders
+            // (for the public board), but secretOtp must never be shown for other users' orders.
+            secretOtp: data.studentId === user?.uid ? data.secretOtp : undefined,
             totalPrice: data.totalPrice,
             isParcel: data.isParcel,
             platformCharges: data.platformCharges,
@@ -159,33 +162,39 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false); // Ensure loading is set to false even on error
       }));
     } else if (user) {
-      // 2. LOGGED IN STUDENT: Use Firestore listeners
-      // Ready orders (for "Ready to Collect" board)
-      const qReady = query(
-        collection(db, "orders"),
-        where("status", "==", "Ready"),
-        orderBy("createdAt", "desc"),
-        limit(200)
-      );
-      listeners.push(onSnapshot(qReady, updateOrdersFromSnapshot, (err) => {
-        if (err.code !== 'permission-denied') {
-          console.error("Public Ready listener error:", err);
-        }
-        setLoading(false);
-      }));
+      // 2. LOGGED IN STUDENT: API polling for public board + private Firestore listener for own orders
+      // The public Firestore queries (qReady/qPreparing without owner filter) hit permission-denied
+      // for non-managers, so we use the same admin-SDK API endpoint as unauthenticated users.
+      const publicMap = new Map<string, Order>();
+      const privateMap = new Map<string, Order>();
 
-      // Preparing orders (offline coupon orders being prepared)
-      const qPreparing = query(
-        collection(db, "orders"),
-        where("status", "==", "Preparing"),
-        orderBy("createdAt", "desc"),
-        limit(100)
-      );
-      listeners.push(onSnapshot(qPreparing, updateOrdersFromSnapshot, (err) => {
-        if (err.code !== 'permission-denied') {
-          console.error("Public Preparing listener error:", err);
+      const rebuildAndSet = () => {
+        const merged = new Map<string, Order>();
+        publicMap.forEach((o, id) => merged.set(id, o));
+        privateMap.forEach((o, id) => merged.set(id, o));
+        const sorted = Array.from(merged.values()).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+        setOrders(sorted);
+        setLoading(false);
+      };
+
+      const fetchAndUpdatePublic = async () => {
+        try {
+          const response = await fetch('/api/orders/public');
+          if (!response.ok) { setLoading(false); return; }
+          const data = await response.json();
+          publicMap.clear();
+          (data.orders as any[]).forEach((o) => {
+            publicMap.set(o.id, { ...o, createdAt: new Date(o.createdAt) });
+          });
+          rebuildAndSet();
+        } catch {
+          setLoading(false);
         }
-      }));
+      };
+
+      fetchAndUpdatePublic();
+      const pollInterval = setInterval(fetchAndUpdatePublic, 5000);
+      listeners.push(() => clearInterval(pollInterval));
 
       // STUDENT PRIVATE: Own active orders (only after payment confirmed)
       const qPrivate = query(
@@ -194,7 +203,34 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         where("status", "in", ["Preparing", "Ready"]),
         limit(20)
       );
-      listeners.push(onSnapshot(qPrivate, updateOrdersFromSnapshot, (err) => {
+      listeners.push(onSnapshot(qPrivate, (snapshot) => {
+        snapshot.docChanges().forEach((change: any) => {
+          if (change.type === 'removed') {
+            privateMap.delete(change.doc.id);
+          } else {
+            const d = change.doc.data();
+            privateMap.set(change.doc.id, {
+              id: change.doc.id,
+              studentId: d.studentId,
+              items: d.items,
+              status: d.status,
+              token: d.token,
+              otpHash: d.otpHash,
+              secretOtp: d.secretOtp, // own order — safe to expose
+              totalPrice: d.totalPrice,
+              isParcel: d.isParcel,
+              platformCharges: d.platformCharges,
+              note: d.note,
+              createdAt: d.createdAt ? (d.createdAt as Timestamp).toDate() : new Date(),
+              dateKey: d.dateKey,
+              kitchen: d.kitchen,
+              userEmail: d.userEmail,
+              userName: d.userName,
+            });
+          }
+        });
+        rebuildAndSet();
+      }, (err) => {
         if (err.code !== 'permission-denied') {
           console.error("Private listener error:", err);
         }

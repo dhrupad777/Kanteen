@@ -20,9 +20,9 @@ export function MenuManager() {
     const [formData, setFormData] = useState<DailyMenu>({
         date: new Date().toISOString().split('T')[0],
         breakfast: [],
-        main: { sabji: "", bread: "", dal: "", rice: "" },
+        main: { sabji: "", bread: "", dal: "", rice: "", salad: "", sweet: "", papad: "", prices: {} },
         snacks: [],
-        special: [], // Now array
+        special: [],
         visibility: {
             breakfast: true,
             main: true,
@@ -58,11 +58,15 @@ export function MenuManager() {
                 note: true
             };
 
-            const main = menu.main ?? {
-                sabji: menu.prepared?.sabji ?? "",
-                dal: menu.prepared?.dal ?? "",
-                bread: menu.prepared?.bread ?? "",
-                rice: menu.prepared?.rice ?? "",
+            const main = {
+                sabji: menu.main?.sabji ?? menu.prepared?.sabji ?? "",
+                dal: menu.main?.dal ?? menu.prepared?.dal ?? "",
+                bread: menu.main?.bread ?? menu.prepared?.bread ?? "",
+                rice: menu.main?.rice ?? menu.prepared?.rice ?? "",
+                salad: menu.main?.salad ?? "",
+                sweet: menu.main?.sweet ?? "",
+                papad: menu.main?.papad ?? "",
+                prices: menu.main?.prices ?? {},
             };
 
             // Handle special as array
@@ -82,8 +86,19 @@ export function MenuManager() {
         }
     }, [menu]);
 
-    const handleMainChange = (field: keyof DailyMenu['main'], value: string) => {
+    type MainTextField = 'sabji' | 'dal' | 'bread' | 'rice' | 'salad' | 'sweet' | 'papad';
+    const handleMainChange = (field: MainTextField, value: string) => {
         setFormData(prev => ({ ...prev, main: { ...prev.main, [field]: value } }));
+    };
+    const handleMainPriceChange = (field: MainTextField, value: string) => {
+        const price = value === '' ? undefined : Math.max(0, parseFloat(value) || 0);
+        setFormData(prev => ({
+            ...prev,
+            main: {
+                ...prev.main,
+                prices: { ...(prev.main.prices ?? {}), [field]: price || undefined }
+            }
+        }));
     };
 
     const handleNoteChange = (value: string) => {
@@ -212,39 +227,42 @@ export function MenuManager() {
                 {/* Main Course Section */}
                 <div className={`rounded-lg border p-4 transition-colors ${formData.visibility.main ? 'bg-muted/20' : 'bg-orange-50/50 border-orange-100'}`}>
                     <SectionHeader icon={ChefHat} label="Main Course" sectionKey="main" />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Sabji</Label>
-                            <Input
-                                value={formData.main.sabji}
-                                onChange={(e) => handleMainChange("sabji", e.target.value)}
-                                placeholder="Enter Sabji"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Dal</Label>
-                            <Input
-                                value={formData.main.dal}
-                                onChange={(e) => handleMainChange("dal", e.target.value)}
-                                placeholder="Enter Dal"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Bread</Label>
-                            <Input
-                                value={formData.main.bread}
-                                onChange={(e) => handleMainChange("bread", e.target.value)}
-                                placeholder="Enter Bread"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Rice</Label>
-                            <Input
-                                value={formData.main.rice}
-                                onChange={(e) => handleMainChange("rice", e.target.value)}
-                                placeholder="Enter Rice"
-                            />
-                        </div>
+                    <p className="text-[10px] text-muted-foreground mb-3">Set a price (₹) to make an item available for online parcel orders.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {([
+                            { field: 'sabji', label: 'Sabji' },
+                            { field: 'dal', label: 'Dal' },
+                            { field: 'bread', label: 'Bread' },
+                            { field: 'rice', label: 'Rice' },
+                            { field: 'salad', label: 'Salad' },
+                            { field: 'sweet', label: 'Sweet' },
+                            { field: 'papad', label: 'Papad' },
+                        ] as const).map(({ field, label }) => (
+                            <div key={field} className="space-y-1">
+                                <Label className="text-xs">{label}</Label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        value={(formData.main as any)[field] ?? ""}
+                                        onChange={(e) => handleMainChange(field, e.target.value)}
+                                        placeholder={`Enter ${label}`}
+                                        className="flex-1"
+                                    />
+                                    <div className="relative flex items-center w-20 shrink-0">
+                                        <span className="absolute left-2.5 text-xs text-muted-foreground pointer-events-none">₹</span>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            value={(formData.main.prices as any)?.[field] ?? ""}
+                                            onChange={(e) => handleMainPriceChange(field, e.target.value)}
+                                            placeholder="—"
+                                            className="pl-6 text-center w-full"
+                                            title="Set price to make orderable online (parcel)"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
