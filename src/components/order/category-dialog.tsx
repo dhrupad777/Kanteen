@@ -5,7 +5,7 @@ import { MenuItemCard } from "./menu-item-card";
 import { Dialog, DialogContent, DialogTrigger, DialogClose, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, ArrowRight, LucideIcon, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, LucideIcon, X, Package } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { CartBottomBar } from "./cart-bottom-bar";
@@ -40,6 +40,11 @@ export function CategoryDialog({ category, label, items, icon: Icon, image }: Ca
                             <h3 className="text-base sm:text-xl md:text-2xl font-bold text-gray-900 leading-tight group-hover:text-primary transition-colors truncate">
                                 {label}
                             </h3>
+                            {category === 'daily_menu' && (
+                                <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">
+                                    <Package className="w-3 h-3" /> Parcel only
+                                </span>
+                            )}
                         </div>
 
                         {/* Right Side: Icon or Image */}
@@ -54,7 +59,7 @@ export function CategoryDialog({ category, label, items, icon: Icon, image }: Ca
                                     width={64}
                                     height={64}
                                     className="h-10 w-10 sm:h-14 sm:w-14 md:h-16 md:w-16 object-contain drop-shadow-sm"
-                                    loading="lazy"
+                                    priority
                                 />
                             ) : (
                                 <Icon className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12" />

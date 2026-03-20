@@ -31,6 +31,7 @@ const CATEGORY_EMOJI: Record<MenuCategory, string> = {
     chinese:      "🥡",
     sabji:        "🍲",
     indian_rice:  "🍚",
+    daily_menu:   "🍽️",
 };
 
 export default function CounterPage() {
