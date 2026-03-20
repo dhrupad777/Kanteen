@@ -177,7 +177,10 @@ export async function POST(request: NextRequest) {
             const counterRef = db.collection('order_counters').doc(`${CAMPUS_ID}_${dateKey}`);
             const orderRef = db.collection('orders').doc(orderId);
 
-            await db.runTransaction(async (transaction) => {
+            // ── Phase 1: Confirm the order (MUST always succeed) ──────────────────────
+            // The print job is NOT inside this transaction. If print job creation
+            // fails for any reason, the order is still confirmed and visible to staff.
+            const confirmedResult = await db.runTransaction(async (transaction) => {
                 const currentOrderDoc = await transaction.get(orderRef);
                 if (!currentOrderDoc.exists) {
                     throw new Error('Order not found');
@@ -185,9 +188,9 @@ export async function POST(request: NextRequest) {
 
                 const currentOrderData = currentOrderDoc.data()!;
 
-                // Double-check not already paid
+                // Double-check not already paid (idempotent)
                 if (currentOrderData.payment?.status === 'paid') {
-                    return; // Already processed
+                    return null; // Already processed — nothing to do
                 }
 
                 // ====== ALLOCATE TOKEN ======
@@ -238,29 +241,47 @@ export async function POST(request: NextRequest) {
                     'audit.updatedBy': 'webhook',
                 });
 
-                // ====== ENQUEUE PRINT JOB (ATOMIC WITH ORDER CONFIRMATION) ======
-                // This mirrors verify-payment's print job enqueue. For UPI payments the
-                // webhook processes the payment before the client handler fires, so without
-                // this the receipt would never be printed (handler skips verifyPayment when
-                // the Firestore listener already resolved the order).
-                enqueuePrintJobTransaction(transaction, orderId, {
-                    orderId,
-                    token: nextToken,
-                    items: currentOrderData.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
-                    studentName: currentOrderData.userName || undefined,
-                    studentEmail: currentOrderData.userEmail || undefined,
-                    note: currentOrderData.note || undefined,
-                    isParcel: currentOrderData.isParcel || false,
-                    createdAt: now.toISOString(),
-                });
-
                 // Mark webhook event as processed
                 transaction.set(webhookEventRef, {
                     processedAt: FieldValue.serverTimestamp(),
                     orderId,
                     status: 'success',
                 });
+
+                // Return data needed for print job (created outside this transaction)
+                return {
+                    token: nextToken,
+                    items: currentOrderData.items,
+                    userName: currentOrderData.userName,
+                    userEmail: currentOrderData.userEmail,
+                    note: currentOrderData.note,
+                    isParcel: currentOrderData.isParcel,
+                };
             });
+
+            // ── Phase 2: Enqueue print job (best-effort, separate from order confirmation) ──
+            // A failure here never affects the order status or manager visibility.
+            // If this fails, the job can be re-queued manually from the manager dashboard.
+            if (confirmedResult) {
+                try {
+                    await db.runTransaction(async (tx) => {
+                        enqueuePrintJobTransaction(tx, orderId, {
+                            orderId,
+                            token: confirmedResult.token,
+                            items: confirmedResult.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
+                            studentName: confirmedResult.userName || undefined,
+                            studentEmail: confirmedResult.userEmail || undefined,
+                            note: confirmedResult.note || undefined,
+                            isParcel: confirmedResult.isParcel || false,
+                            createdAt: now.toISOString(),
+                        });
+                    });
+                } catch (printErr: any) {
+                    // Non-fatal: print job may already exist (created by verify-payment).
+                    // Order is already confirmed. Log and move on.
+                    console.error('Webhook: print job enqueue failed (non-fatal):', printErr?.message);
+                }
+            }
 
             await logAuditEvent({
                 eventType: 'WEBHOOK_PROCESSED',
@@ -326,6 +347,11 @@ export async function POST(request: NextRequest) {
 
     } catch (error: any) {
         console.error('Razorpay webhook error:', error instanceof Error ? error.message : 'Unknown error');
-        return NextResponse.json({ status: 'error', message: error.message });
+        // Return 500 so Razorpay retries the webhook. A 200 response would tell
+        // Razorpay "delivered OK" and it would never retry, silently losing the payment.
+        return NextResponse.json(
+            { status: 'error', message: error instanceof Error ? error.message : 'Internal error' },
+            { status: 500 }
+        );
     }
 }
