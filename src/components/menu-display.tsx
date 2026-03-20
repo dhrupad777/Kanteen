@@ -37,75 +37,59 @@ export function MenuDisplay() {
     if (!showBreakfast && !showMain && !showSnacks && !showSpecial && !showNote) return null;
 
 
-    // Helper for rendering the items container with staggered text animations
     const GroupItems = ({ items, useFlex = false, textClassName, gridCols = 2 }: { items: string[], useFlex?: boolean, textClassName?: string, gridCols?: number }) => {
         const baseTextClass = cn("font-bold tracking-tight uppercase text-black dark:text-white leading-tight", textClassName || "text-[12px]");
 
         if (useFlex) {
             return (
-                <motion.div
-                    className="flex flex-row items-center justify-between w-full overflow-hidden gap-1.5"
-                    variants={staggerContainer}
-                    initial="hidden"
-                    animate="show"
-                >
+                <div className="flex flex-wrap gap-x-3 gap-y-1 w-full">
                     {items.map((item, i) => (
-                        <motion.span
+                        <span
                             key={i}
-                            variants={staggerItem}
-                            className={cn(baseTextClass, "whitespace-nowrap overflow-hidden text-ellipsis flex-shrink")}
+                            className={cn(baseTextClass, "break-words min-w-0")}
                         >
                             {item}
-                        </motion.span>
+                        </span>
                     ))}
-                </motion.div>
+                </div>
             );
         }
 
         // Default Grid Behavior (dynamic columns)
         return (
-            <motion.div
+            <div
                 className={cn("grid gap-x-2 gap-y-1",
                     gridCols === 4 ? "grid-cols-4" : "grid-cols-2"
                 )}
-                variants={staggerContainer}
-                initial="hidden"
-                animate="show"
             >
                 {items.map((item, i) => (
-                    <motion.span
+                    <span
                         key={i}
-                        variants={staggerItem}
-                        className={cn(baseTextClass, "truncate")}
+                        className={cn(baseTextClass, "break-words")}
                     >
                         {item}
-                    </motion.span>
+                    </span>
                 ))}
-            </motion.div>
+            </div>
         );
     };
 
     // Compact Group Tile with hover animation
     const CategoryGroup = ({ items, className, title, useFlex = false, textClassName, gridCols = 2 }: { items: string[], className?: string, title?: string, useFlex?: boolean, textClassName?: string, gridCols?: number }) => (
-        <motion.div
-            variants={staggerItem}
-            whileHover={{ scale: 1.01, transition: { duration: 0.2 } }}
+        <div
             className={cn("bg-white dark:bg-black border border-orange-100 dark:border-orange-900/30 rounded-xl p-3 shadow-sm h-full transition-shadow hover:shadow-md", className)}
         >
             {title && <div className="text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-2 opacity-80">{title}</div>}
             <GroupItems items={items} useFlex={useFlex} textClassName={textClassName} gridCols={gridCols} />
-        </motion.div>
+        </div>
     );
 
     return (
-        <motion.div
+        <div
             className="w-full max-w-lg mx-auto p-0"
             style={{ fontFamily: "'Product Sans', 'Inter', sans-serif" }}
-            variants={staggerContainer}
-            initial="hidden"
-            animate="show"
         >
-            <motion.div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
 
                 {showMain && (
                     <CategoryGroup
@@ -118,8 +102,7 @@ export function MenuDisplay() {
                 )}
 
                 {(showBreakfast || showSnacks) && (
-                    <motion.div
-                        variants={staggerItem}
+                    <div
                         className={cn("grid gap-2", (showBreakfast && showSnacks) ? "grid-cols-2" : "grid-cols-1")}
                     >
                         {showBreakfast && (
@@ -138,7 +121,7 @@ export function MenuDisplay() {
                                 textClassName="text-[10px] sm:text-[11px]"
                             />
                         )}
-                    </motion.div>
+                    </div>
                 )}
 
                 {/* SPECIAL GROUP - Compact Height */}
@@ -154,16 +137,15 @@ export function MenuDisplay() {
 
                 {/* NOTE with entrance animation */}
                 {showNote && (
-                    <motion.div
-                        variants={staggerItem}
+                    <div
                         className="mt-1 px-3 py-2 text-center bg-amber-100/50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 rounded-lg"
                     >
                         <span className="text-sm font-black text-amber-900 dark:text-amber-100 uppercase tracking-tight">
                             Note: {note}
                         </span>
-                    </motion.div>
+                    </div>
                 )}
-            </motion.div>
-        </motion.div>
+            </div>
+        </div>
     );
 }
