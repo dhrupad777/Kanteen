@@ -49,6 +49,7 @@ interface RazorpayCheckoutOptions {
         price: number;
     }[];
     isParcel?: boolean;
+    parcelCharge?: number;
     platformCharges?: number;
     /** Kitchen notes (e.g., "make it spicy", "less oil") */
     note?: string;
@@ -90,6 +91,7 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
             body: JSON.stringify({
                 items: checkoutOptions.items,
                 isParcel: checkoutOptions.isParcel,
+                parcelCharge: checkoutOptions.parcelCharge,
                 platformCharges: checkoutOptions.platformCharges,
                 note: checkoutOptions.note,
             }),
@@ -224,8 +226,10 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     retry: { enabled: true, max_count: 1 },
                     handler: async (response: any) => {
                         if (resolved) return;
-                        resolved = true;
-                        unsubscribeFirestore?.();
+                        // Do NOT set resolved=true here — let handleSuccess own that flag.
+                        // This ensures handleSuccess actually calls onSuccess instead of
+                        // short-circuiting, and keeps the Firestore listener alive as a
+                        // fallback if verifyPayment throws.
                         try {
                             const freshToken = await getAuthToken();
                             const verifyResponse = await verifyPayment(
@@ -241,7 +245,9 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                                 paymentVpa: verifyResponse.paymentVpa,
                             });
                         } catch (err: any) {
-                            resolved = false; // allow error UI to show
+                            // verifyPayment failed — money may already be captured.
+                            // Keep the Firestore listener alive so the webhook can still
+                            // trigger handleSuccess if/when the payment settles server-side.
                             setLoading(false);
                             const errorMsg = err.message || 'Payment verification failed';
                             setError(errorMsg);
@@ -270,12 +276,14 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                 const razorpay = new window.Razorpay(razorpayOptions);
                 razorpay.on('payment.failed', (response: any) => {
                     if (resolved) return;
-                    unsubscribeFirestore?.();
+                    // Keep the Firestore listener alive and do NOT reject the Promise.
+                    // Razorpay shows a "Retry" button inside the same modal — if the student
+                    // adds funds and retries, handler() will fire and we must still be able
+                    // to resolve. ondismiss handles the case where they close without retrying.
                     setLoading(false);
-                    const errorMsg = response.error?.description || 'Payment failed';
+                    const errorMsg = response.error?.description || 'Payment failed. You can retry.';
                     setError(errorMsg);
                     options.onError?.(errorMsg);
-                    reject(new Error(errorMsg));
                 });
                 razorpay.open();
             });
