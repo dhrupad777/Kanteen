@@ -60,19 +60,25 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
   // Uses sessionStorage cache (10 min TTL) to avoid blocking order listeners on every page load
   useEffect(() => {
     async function checkRole() {
-      if (user?.email) {
-        // Check cache first — avoids extra Firestore round-trip on every visit
-        const cached = getCachedManagerRole(user.email);
-        if (cached !== null) {
-          setIsVerifiedManager(cached);
-          setIsManager(cached);
-          return;
+      try {
+        if (user?.email) {
+          // Check cache first — avoids extra Firestore round-trip on every visit
+          const cached = getCachedManagerRole(user.email);
+          if (cached !== null) {
+            setIsVerifiedManager(cached);
+            setIsManager(cached);
+            return;
+          }
+          const allowed = await checkManagerAllowlist(user.email);
+          setCachedManagerRole(user.email, allowed);
+          setIsVerifiedManager(allowed);
+          setIsManager(allowed);
+        } else {
+          setIsVerifiedManager(false);
+          setIsManager(false);
         }
-        const allowed = await checkManagerAllowlist(user.email);
-        setCachedManagerRole(user.email, allowed);
-        setIsVerifiedManager(allowed);
-        setIsManager(allowed);
-      } else {
+      } catch (err) {
+        console.error("checkRole failed, defaulting to student path:", err);
         setIsVerifiedManager(false);
         setIsManager(false);
       }
