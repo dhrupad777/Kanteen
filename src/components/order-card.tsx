@@ -59,10 +59,7 @@ export function OrderCard({ order, role }: OrderCardProps) {
   return (
     <>
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }}
-        transition={springs.bouncy}
         whileHover={role === 'student' ? { y: -4, transition: springs.soft } : undefined}
         whileTap={role === 'student' ? { scale: 0.98 } : undefined}
       >

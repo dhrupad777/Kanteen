@@ -337,20 +337,25 @@ function DashboardSection({
       </CardHeader>
       <CardContent>
         {orders.length > 0 ? (
+          <AnimatePresence mode="popLayout">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
             {orders.map((order, index) => (
-              <div
+              <motion.div
                 key={order.id}
-                className="relative group animate-in fade-in slide-in-from-bottom-2 duration-300"
-                style={{ animationDelay: `${Math.min(index * 50, 200)}ms` }}
+                layout
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1, transition: { delay: Math.min(index * 0.05, 0.2), type: 'spring', stiffness: 300, damping: 24 } }}
+                exit={{ opacity: 0, scale: 0.75, y: -8, transition: { duration: 0.25, ease: 'easeIn' } }}
+                className="relative group"
               >
                 <OrderCard
                   order={order}
                   role="student"
                 />
-              </div>
+              </motion.div>
             ))}
           </div>
+          </AnimatePresence>
         ) : (
           <p className="text-muted-foreground p-4 text-center">{emptyMessage}</p>
         )}

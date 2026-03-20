@@ -173,7 +173,7 @@ export async function POST(
 
         // Send push notification when order is marked Ready
         if (status === 'Ready' && orderData.studentId) {
-            sendOrderReadyNotification(orderId, orderData.studentId, orderData.token).catch(() => {});
+            sendOrderReadyNotification(orderId, orderData.studentId, orderData.token, orderData.userName).catch(() => {});
         }
 
         // If newly completed, update the daily report and cleanup note

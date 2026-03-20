@@ -22,7 +22,8 @@ interface PushSubscriptionDoc {
 export async function sendOrderReadyNotification(
     orderId: string,
     studentId: string,
-    token: number
+    token: number,
+    studentName?: string
 ): Promise<void> {
     if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
         console.warn('push-notifications: VAPID keys not configured — skipping');
@@ -38,9 +39,15 @@ export async function sendOrderReadyNotification(
 
         if (snapshot.empty) return;
 
+        // Use first name if available: "Dhrupad your order 206 is ready!"
+        const firstName = studentName ? studentName.split(' ')[0] : null;
+        const title = firstName
+            ? `${firstName}, your order ${token} is ready! 🎉`
+            : `Order ${token} is ready! 🎉`;
+
         const payload = JSON.stringify({
-            title: 'Your order is ready! 🎉',
-            body: `Token #${token} — open Kanteen to see your OTP`,
+            title,
+            body: 'Open Kanteen to see your pickup OTP',
             url: '/student',
         });
 
