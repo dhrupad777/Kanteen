@@ -5,7 +5,7 @@ import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff, Bell } from 'lucide-react';
+import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff, Bell, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import Link from "next/link";
@@ -29,6 +29,32 @@ export default function StudentDashboardPage() {
       await subscribe(token);
     }
   }, [user, subscribed, subscribe, unsubscribe]);
+
+  // Notification prompt dialog
+  const NOTIF_SNOOZE_KEY = 'kanteen_notif_prompt_snoozed';
+  const [showNotifPrompt, setShowNotifPrompt] = useState(false);
+
+  useEffect(() => {
+    if (!user || !supported || subscribed || permission !== 'default') return;
+    const snoozed = localStorage.getItem(NOTIF_SNOOZE_KEY);
+    if (snoozed && Date.now() < Number(snoozed)) return;
+    // Show prompt 1.5s after page loads — feels natural, not jarring
+    const t = setTimeout(() => setShowNotifPrompt(true), 1500);
+    return () => clearTimeout(t);
+  }, [user, supported, subscribed, permission]);
+
+  const handleEnableNotifications = useCallback(async () => {
+    setShowNotifPrompt(false);
+    if (!user) return;
+    const token = await user.getIdToken();
+    await subscribe(token);
+  }, [user, subscribe]);
+
+  const handleSnoozeNotifications = useCallback(() => {
+    // Snooze for 7 days
+    localStorage.setItem(NOTIF_SNOOZE_KEY, String(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    setShowNotifPrompt(false);
+  }, []);
 
   // Order confirmation popup state
   const [orderConfirmed, setOrderConfirmed] = useState<{ token: number; orderId: string } | null>(null);
@@ -175,6 +201,99 @@ export default function StudentDashboardPage() {
                   >
                     <BellOff className="w-3.5 h-3.5" />
                     Don&apos;t show this again
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Notification prompt dialog */}
+      <AnimatePresence>
+        {showNotifPrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            onClick={handleSnoozeNotifications}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 60, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 30, scale: 0.96 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+              className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Orange top stripe */}
+              <div className="h-1 bg-gradient-to-r from-orange-400 to-orange-600" />
+
+              <div className="px-6 pt-5 pb-6">
+                {/* Close */}
+                <button
+                  onClick={handleSnoozeNotifications}
+                  className="absolute top-3 right-3 p-1.5 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                {/* Icon */}
+                <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-2xl flex items-center justify-center mb-4">
+                  <Bell className="w-6 h-6 text-orange-500" />
+                </div>
+
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                  Know the moment it&apos;s ready
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                  Get notified the second your order is ready for pickup — even if you close this tab.
+                </p>
+
+                {/* Platform instructions */}
+                <div className="space-y-2 mb-5">
+                  {!iosNeedsInstall ? (
+                    // Android / Desktop — just tap allow
+                    <div className="flex items-start gap-3 bg-gray-50 dark:bg-zinc-800 rounded-2xl px-3.5 py-3">
+                      <Smartphone className="w-4 h-4 text-orange-400 mt-0.5 shrink-0" />
+                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
+                        Tap <span className="font-semibold text-gray-800 dark:text-white">Enable below</span> and hit <span className="font-semibold text-gray-800 dark:text-white">Allow</span> when your browser asks.
+                      </p>
+                    </div>
+                  ) : (
+                    // iOS Safari — needs PWA first
+                    <>
+                      <div className="flex items-start gap-3 bg-gray-50 dark:bg-zinc-800 rounded-2xl px-3.5 py-3">
+                        <span className="text-base leading-none mt-0.5">📱</span>
+                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
+                          <span className="font-semibold text-gray-800 dark:text-white">iOS step 1 —</span> Tap the Share button in Safari, then <span className="font-semibold text-gray-800 dark:text-white">Add to Home Screen</span>.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-3 bg-gray-50 dark:bg-zinc-800 rounded-2xl px-3.5 py-3">
+                        <span className="text-base leading-none mt-0.5">🔔</span>
+                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
+                          <span className="font-semibold text-gray-800 dark:text-white">iOS step 2 —</span> Open Kanteen from your Home Screen, then tap <span className="font-semibold text-gray-800 dark:text-white">Enable</span> below.
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleEnableNotifications}
+                    disabled={pushLoading || iosNeedsInstall}
+                    className="w-full py-3 rounded-2xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-[0.98] text-white font-semibold text-sm transition-all"
+                  >
+                    {iosNeedsInstall ? 'Add to Home Screen first ↑' : 'Enable Notifications'}
+                  </button>
+                  <button
+                    onClick={handleSnoozeNotifications}
+                    className="w-full py-2.5 rounded-2xl text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-zinc-800 active:scale-[0.98] text-xs font-medium transition-all"
+                  >
+                    Not now
                   </button>
                 </div>
               </div>
