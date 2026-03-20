@@ -62,6 +62,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
                         name: item.name,
                         price: item.price,
                         qty: 1,
+                        parcelCharge: item.parcelCharge,
                         category: item.category,
                     },
                 ],
@@ -123,6 +124,10 @@ interface CartContextType {
     totalPrice: number;
     /** True when the cart contains at least one daily-menu item (parcel must be forced ON). */
     hasDailyItems: boolean;
+    /** Sum of per-item parcel surcharges for all items that carry one (daily_menu items). */
+    specialParcelCharge: number;
+    /** True when the cart contains at least one non-daily-menu item. */
+    hasNormalItems: boolean;
     addItem: (item: MenuItem) => void;
     removeItem: (itemId: string) => void;
     increment: (itemId: string) => void;
@@ -195,6 +200,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     // Computed values
     const hasDailyItems = state.items.some(item => item.category === 'daily_menu');
+    const specialParcelCharge = state.items.reduce((sum, item) =>
+        sum + (item.parcelCharge ?? 0) * item.qty, 0);
+    const hasNormalItems = state.items.some(item => item.category !== 'daily_menu');
     const totalItems = state.items.reduce((sum, item) => sum + item.qty, 0);
     const totalPrice = state.items.reduce((sum, item) => {
         if (!item.price || isNaN(item.price)) {
@@ -250,6 +258,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 totalItems,
                 totalPrice,
                 hasDailyItems,
+                specialParcelCharge,
+                hasNormalItems,
                 addItem,
                 removeItem,
                 increment,

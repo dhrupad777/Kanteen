@@ -70,10 +70,16 @@ export default function CartPage() {
         },
     });
 
-    // Calculate final price including parcel charge and platform charges
-    const parcelCharge = 5;
+    // Calculate dynamic parcel charge based on items
+    const parcelCharge = useMemo(() => {
+        const special = items.reduce((sum, item) => sum + (item.parcelCharge ?? 0) * item.qty, 0);
+        const hasNormalItems = items.some(item => item.category !== 'daily_menu');
+        const base = (isParcel && hasNormalItems) ? 5 : 0;
+        return special + base;
+    }, [items, isParcel]);
+
     const platformCharges = 0; // Platform convenience charges (currently ₹0)
-    const finalTotal = isParcel ? totalPrice + parcelCharge + platformCharges : totalPrice + platformCharges;
+    const finalTotal = totalPrice + parcelCharge + platformCharges;
 
     // Show loading state while checking localStorage
     if (!isHydrated) {
@@ -277,7 +283,7 @@ export default function CartPage() {
                                 <span>Subtotal ({totalItems} items)</span>
                                 <span>₹{totalPrice}</span>
                             </div>
-                            {isParcel && (
+                            {parcelCharge > 0 && (
                                 <div className="flex justify-between text-sm text-gray-600">
                                     <span>Parcel Charges</span>
                                     <span>₹{parcelCharge}</span>
@@ -324,6 +330,7 @@ export default function CartPage() {
                                 await razorpayCheckout({
                                     items: checkoutItems,
                                     isParcel: isParcel,
+                                    parcelCharge: parcelCharge,
                                     platformCharges: platformCharges,
                                     note: note.trim() || undefined,
                                 });

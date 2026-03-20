@@ -5,10 +5,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { signInWithGoogle, isInAppBrowser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, ArrowLeft, Utensils, Coffee, Soup, Sandwich, Disc, CircleDot, ChefHat, UtensilsCrossed, Carrot, Spline, Plus, Minus, Package } from "lucide-react";
+import { Search, ArrowLeft, Utensils, Coffee, Soup, Sandwich, Disc, CircleDot, ChefHat, UtensilsCrossed, Carrot, Spline } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useRouter } from "next/navigation";
-import { useMenu } from "@/hooks/use-menu";
 
 // Order-specific imports
 import { useCart } from "@/contexts/cart-provider";
@@ -37,7 +36,8 @@ const CATEGORY_ICONS: Record<MenuCategory, any> = {
     'paratha': ChefHat,
     'chinese': UtensilsCrossed,
     'sabji': Carrot,
-    'indian_rice': Utensils
+    'indian_rice': Utensils,
+    'daily_menu': Utensils,
 };
 
 // Image Mapping (Overrides icons if present)
@@ -67,11 +67,8 @@ function OrderContent() {
     // Menu items — only show items that are currently available
     const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({ includeUnavailable: false });
 
-    // Daily menu (for orderable daily items)
-    const { menu: dailyMenu } = useMenu();
-
     // Cart
-    const { totalItems, totalPrice, hasDailyItems, getCheckoutItems, clearCart, addItem, getItemQty, decrement } = useCart();
+    const { totalItems, totalPrice, hasDailyItems, specialParcelCharge, hasNormalItems, getCheckoutItems, clearCart } = useCart();
 
     // Razorpay
     const { checkout: razorpayCheckout } = useRazorpay({
@@ -146,9 +143,11 @@ function OrderContent() {
 
         try {
             const checkoutItems = getCheckoutItems();
+            const parcelCharge = specialParcelCharge + (hasDailyItems && hasNormalItems ? 5 : 0);
             await razorpayCheckout({
                 items: checkoutItems,
-                isParcel: hasDailyItems, // force parcel when daily menu items are in cart
+                isParcel: hasDailyItems,
+                parcelCharge,
                 platformCharges: 0,
             });
             // Success is handled by onSuccess callback
@@ -159,20 +158,6 @@ function OrderContent() {
             }
         }
     }
-
-    // Daily menu items with a price set — these are orderable as parcel-only
-    const dailyOrderableItems = useMemo(() => {
-        if (!dailyMenu?.main) return [];
-        const fields = ['sabji', 'dal', 'bread', 'rice', 'salad', 'sweet', 'papad'] as const;
-        return fields
-            .map(f => {
-                const name = (dailyMenu.main as any)[f] as string | undefined;
-                const price = dailyMenu.main.prices?.[f];
-                if (!name?.trim() || typeof price !== 'number' || price <= 0) return null;
-                return { id: `daily_${f}`, name: name.trim(), price };
-            })
-            .filter((x): x is { id: string; name: string; price: number } => x !== null);
-    }, [dailyMenu]);
 
     // Filter items by debounced search query (memoized for performance)
     const filteredItems = useMemo(() => {
@@ -335,48 +320,7 @@ function OrderContent() {
                             </div>
                         )}
 
-                        {/* Daily Menu orderable items */}
-                        {!debouncedSearchQuery && dailyOrderableItems.length > 0 && (
-                            <div className="mb-4 sm:mb-6">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Daily Menu</h2>
-                                    <span className="flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">
-                                        <Package className="w-3 h-3" /> Parcel only
-                                    </span>
-                                </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                                    {dailyOrderableItems.map(item => {
-                                        const qty = getItemQty(item.id);
-                                        return (
-                                            <div key={item.id} className="bg-white rounded-2xl border border-gray-100 p-3 shadow-sm flex flex-col gap-2">
-                                                <div>
-                                                    <p className="font-semibold text-sm text-gray-900 truncate">{item.name}</p>
-                                                    <p className="text-xs text-gray-500">₹{item.price}</p>
-                                                </div>
-                                                {qty === 0 ? (
-                                                    <button
-                                                        onClick={() => addItem({ id: item.id, name: item.name, price: item.price, category: 'daily_menu', isActive: true, isAvailable: true, sortOrder: 0 })}
-                                                        className="w-full py-1.5 bg-orange-500 hover:bg-orange-600 active:scale-[0.97] text-white text-xs font-semibold rounded-xl transition-all"
-                                                    >
-                                                        Add
-                                                    </button>
-                                                ) : (
-                                                    <div className="flex items-center justify-between bg-orange-50 rounded-xl px-1 py-0.5">
-                                                        <button onClick={() => decrement(item.id)} className="h-7 w-7 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                                                            <Minus className="h-3 w-3 text-gray-600" />
-                                                        </button>
-                                                        <span className="font-bold text-sm text-orange-600">{qty}</span>
-                                                        <button onClick={() => addItem({ id: item.id, name: item.name, price: item.price, category: 'daily_menu', isActive: true, isAvailable: true, sortOrder: 0 })} className="h-7 w-7 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                                                            <Plus className="h-3 w-3 text-gray-600" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
+
 
                         {/* Content */}
                         {!menuLoading && !menuError && (

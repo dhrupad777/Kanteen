@@ -10,6 +10,8 @@ export interface MenuItem {
     isActive: boolean;       // item exists in catalog
     isAvailable: boolean;    // can be ordered now
     sortOrder: number;       // display order within category
+    /** Per-item parcel surcharge in rupees (e.g. 10 for Full Plate, 5 for half plate) */
+    parcelCharge?: number;
     tags?: string[];         // ['veg', 'jain', 'spicy']
     imageUrl?: string;
     updatedAt?: any;
@@ -29,6 +31,7 @@ export type MenuCategory =
     | 'daily_menu'; // virtual category for daily-menu orderable items (not in MENU_CATEGORIES grid)
 
 export const MENU_CATEGORIES: { value: MenuCategory; label: string }[] = [
+    { value: 'daily_menu', label: 'Main Course' }, // Now a visible category tab
     { value: 'tea_beverage', label: 'Tea & Beverages' },
     { value: 'maggie', label: 'Maggie' },
     { value: 'sandwich', label: 'Sandwich' },
@@ -49,5 +52,7 @@ export interface CartItem {
     name: string;
     price: number;
     qty: number;
+    /** Per-item parcel surcharge copied from MenuItem at add-time */
+    parcelCharge?: number;
     category: string;
 }

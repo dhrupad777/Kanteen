@@ -12,7 +12,6 @@ const MAX_PRICE_PER_ITEM = 10000; // rupees
 const MAX_TOTAL_PRICE = 50000;   // rupees
 const MAX_ITEM_NAME_LENGTH = 100;
 const CAMPUS_ID = 'default';
-const PARCEL_CHARGE = 5; // rupees — must match what the client shows the user
 
 /**
  * Creates a Razorpay order and stores pending order in Firestore
@@ -71,6 +70,8 @@ export async function POST(request: NextRequest) {
         const menuItemsRef = db.collection('menu_items');
         const validatedItems: CheckoutItem[] = [];
         let serverCalculatedTotal = 0;
+        let specialParcelCharge = 0;
+        let hasNormalItems = false;
 
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
@@ -91,41 +92,26 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: `Item ${i + 1}: Maximum ${MAX_ITEM_QUANTITY} per item` }, { status: 400 });
             }
 
-            // ====== PRICE LOOKUP — daily menu vs regular menu_items ======
-            let serverPrice: number;
+            // ====== PRICE LOOKUP ======
+            const menuItemDoc = await menuItemsRef.doc(item.itemId).get();
+            if (!menuItemDoc.exists) {
+                return NextResponse.json({ error: `Item ${i + 1}: Item not found in menu` }, { status: 400 });
+            }
+            const menuItemData = menuItemDoc.data()!;
+            if (!menuItemData?.isAvailable || !menuItemData?.isActive) {
+                return NextResponse.json({ error: `Item "${item.name}" is currently unavailable` }, { status: 400 });
+            }
+            const serverPrice = menuItemData.price;
+            if (typeof serverPrice !== 'number' || serverPrice < 0 || serverPrice > MAX_PRICE_PER_ITEM) {
+                return NextResponse.json({ error: `Item ${i + 1}: Invalid price configuration` }, { status: 400 });
+            }
 
-            if (item.itemId.startsWith('daily_')) {
-                // Daily menu item — look up price from canteen_state/today
-                const field = item.itemId.slice(6); // 'daily_sabji' → 'sabji'
-                const dailyMenuDoc = await db.collection('canteen_state').doc('today').get();
-                if (!dailyMenuDoc.exists) {
-                    return NextResponse.json({ error: `Daily menu is not available` }, { status: 400 });
-                }
-                const dailyData = dailyMenuDoc.data()!;
-                const itemName: unknown = dailyData?.main?.[field];
-                const itemPrice: unknown = dailyData?.main?.prices?.[field];
-
-                if (typeof itemName !== 'string' || !itemName.trim()) {
-                    return NextResponse.json({ error: `Daily menu item "${field}" is not set today` }, { status: 400 });
-                }
-                if (typeof itemPrice !== 'number' || itemPrice <= 0) {
-                    return NextResponse.json({ error: `Daily menu item "${itemName}" is not available for online order` }, { status: 400 });
-                }
-                serverPrice = itemPrice;
+            // Per-item parcel charge stored on the Firestore menu item document
+            const itemParcelCharge = typeof menuItemData.parcelCharge === 'number' ? menuItemData.parcelCharge : 0;
+            if (itemParcelCharge > 0) {
+                specialParcelCharge += itemParcelCharge * item.qty;
             } else {
-                // Regular menu item — look up from menu_items collection
-                const menuItemDoc = await menuItemsRef.doc(item.itemId).get();
-                if (!menuItemDoc.exists) {
-                    return NextResponse.json({ error: `Item ${i + 1}: Item not found in menu` }, { status: 400 });
-                }
-                const menuItemData = menuItemDoc.data()!;
-                if (!menuItemData?.isAvailable || !menuItemData?.isActive) {
-                    return NextResponse.json({ error: `Item "${item.name}" is currently unavailable` }, { status: 400 });
-                }
-                serverPrice = menuItemData.price;
-                if (typeof serverPrice !== 'number' || serverPrice < 0 || serverPrice > MAX_PRICE_PER_ITEM) {
-                    return NextResponse.json({ error: `Item ${i + 1}: Invalid price configuration` }, { status: 400 });
-                }
+                hasNormalItems = true;
             }
 
             const itemTotal = serverPrice * item.qty;
@@ -139,14 +125,14 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        // Daily menu items are parcel-only — enforce server-side regardless of client flag
-        const hasDailyItems = validatedItems.some(i => i.itemId.startsWith('daily_'));
-        const effectiveIsParcel = isParcel || hasDailyItems;
-
-        // Add parcel charge server-side — never trust the client for this
-        if (effectiveIsParcel) {
-            serverCalculatedTotal += PARCEL_CHARGE;
-        }
+        // Dynamic Parcel Charge (Server-side validation)
+        const baseParcelCharge = (isParcel && hasNormalItems) ? 5 : 0;
+        const totalParcelCharge = specialParcelCharge + baseParcelCharge;
+        
+        serverCalculatedTotal += totalParcelCharge;
+        
+        // Define effectiveIsParcel for the order document
+        const effectiveIsParcel = isParcel || specialParcelCharge > 0;
 
         // Platform charges (currently ₹0 — guard against negative values from client)
         const sanitizedPlatformCharges = Math.max(0, Number(platformCharges) || 0);
@@ -204,7 +190,7 @@ export async function POST(request: NextRequest) {
             items: formattedItems,
             totalPrice: serverCalculatedTotal,
             isParcel: effectiveIsParcel,
-            parcelCharge: effectiveIsParcel ? PARCEL_CHARGE : 0,
+            parcelCharge: totalParcelCharge,
             platformCharges: sanitizedPlatformCharges,
             status: 'pending',
             createdAt: FieldValue.serverTimestamp(),
