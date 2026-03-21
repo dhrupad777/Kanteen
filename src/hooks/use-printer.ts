@@ -194,16 +194,16 @@ export function usePrinter() {
 
         r += divider('=');
 
-        // ── Customer name — right below token so staff sees it immediately ──
+        // ── Customer name — double-height so staff can read it at a glance ──
         r += ESCPOS.ALIGN_LEFT;
         const customerName = job.customerName || job.userName || '';
         if (customerName) {
-            r += ESCPOS.BOLD_ON;
+            r += ESCPOS.DOUBLE_HEIGHT + ESCPOS.BOLD_ON;
             r += `${customerName}\n`;
-            r += ESCPOS.BOLD_OFF;
+            r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
         }
 
-        // ── Items ─────────────────────────────────────────────────
+        // ── Items — double-height for easy reading while assembling ───────
         r += ESCPOS.ALIGN_LEFT;
         (job.items || []).forEach((item: any) => {
             const qty = item.qty || item.quantity || 1;
@@ -219,7 +219,9 @@ export function usePrinter() {
                 ? rawName.substring(0, available - 2) + '..'
                 : rawName.padEnd(available);
 
+            r += ESCPOS.DOUBLE_HEIGHT;
             r += `${qtyLabel} ${name} ${priceLabel}\n`;
+            r += ESCPOS.NORMAL_SIZE;
         });
 
         r += divider();
@@ -249,9 +251,9 @@ export function usePrinter() {
         // ── Billing ───────────────────────────────────────────────
         r += ESCPOS.ALIGN_LEFT;
         r += totalLine('Platform Fee', 'Rs. 0');
-        r += ESCPOS.BOLD_ON;
+        r += ESCPOS.DOUBLE_HEIGHT + ESCPOS.BOLD_ON;
         r += totalLine('TOTAL', `Rs. ${job.totalPrice || 0}`);
-        r += ESCPOS.BOLD_OFF;
+        r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
 
         r += divider();
 

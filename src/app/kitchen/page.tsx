@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { useAuth } from '@/hooks/use-auth';
 import { useStaffAuth } from '@/hooks/use-staff-auth';
-import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, EyeOff, LogOut, Bluetooth, Printer, AlertCircle, RotateCcw, SkipForward, History } from 'lucide-react';
+import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, EyeOff, LogOut, Bluetooth, Printer, AlertCircle, PrinterIcon, History, SkipForward } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,49 +53,93 @@ export default function KitchenPage() {
     useEffect(() => { generateReceiptDataRef.current = generateReceiptData; }, [generateReceiptData]);
     useEffect(() => { sendToBluetoothPrinterRef.current = sendToBluetoothPrinter; }, [sendToBluetoothPrinter]);
 
-    // ── Print Queue (source of truth) ────────────────────────────────────────
-    // jobsRef gives access to current queued jobs inside async callbacks
-    const jobsRef = useRef<any[]>([]);
+    // ── Warn before reload/navigate away when printer is connected ───────────
+    useEffect(() => {
+        if (!printer) return;
+        const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+        window.addEventListener('beforeunload', warn);
+        return () => window.removeEventListener('beforeunload', warn);
+    }, [printer]);
 
-    const processPrintJob = useCallback(async (job: any): Promise<void> => {
-        if (!autoPrintRef.current || !printerRef.current) return; // printer offline — job stays queued
-        const claimed = await claimJob(job.id);
-        if (!claimed) return; // another tab already claimed it
+    // ── Print Queue (for UI display + reconnect recovery only) ──────────────
+    const { jobs, failedJobs, completedJobs, completeJob, failJob, retryJob } = usePrintQueueRealtime({
+        autoStart: true,
+    });
+    const jobsRef = useRef<any[]>([]);
+    const failedJobsRef = useRef<any[]>([]);
+    useEffect(() => { jobsRef.current = jobs; }, [jobs]);
+    useEffect(() => { failedJobsRef.current = failedJobs; }, [failedJobs]);
+
+    // ── Process a queued/failed print job directly (no claim API dependency) ─
+    // Uses a local Set to prevent double-printing within this session.
+    const processedJobsRef = useRef<Set<string>>(new Set());
+
+    const processQueuedJob = useCallback(async (job: any) => {
+        if (processedJobsRef.current.has(job.id)) return;
+        if (!printerRef.current) return;
+        processedJobsRef.current.add(job.id);
         const receiptText = generateReceiptDataRef.current(job);
         const ok = await sendToBluetoothPrinterRef.current(receiptText);
         if (ok) {
-            await completeJob(job.id);
-            toast({ title: `Printed Token ${job.token}`, description: job.customerName ? `Order for ${job.customerName}` : 'Sent to Bluetooth printer' });
+            toast({ title: `Printed Token ${job.token}`, description: 'Recovered from queue' });
+            completeJob(job.id).catch(() => {}); // best-effort — 403 is silently swallowed
         } else {
-            await failJob(job.id, 'Bluetooth send failed');
+            processedJobsRef.current.delete(job.id); // allow retry
+            failJob(job.id, 'Bluetooth send failed').catch(() => {});
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toast]);
+    }, [toast, completeJob, failJob]);
 
-    const { jobs, failedJobs, completedJobs, claimJob, completeJob, failJob, retryJob, recoverStaleJobs } = usePrintQueueRealtime({
-        autoStart: true,
-        onNewJob: processPrintJob,
-    });
-
-    useEffect(() => { jobsRef.current = jobs; }, [jobs]);
-
-    // When printer connects (auto-reconnect or manual): flush pending queue
-    const processPendingQueue = useCallback(async () => {
-        await recoverStaleJobs(); // unstick any stuck in 'printing'
-        for (const job of jobsRef.current) {
-            await processPrintJob(job);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [processPrintJob, recoverStaleJobs]);
-
+    // ── When printer connects: flush any pending queued jobs ─────────────────
     const prevPrinterRef = useRef<typeof printer>(null);
     useEffect(() => {
         if (printer && !prevPrinterRef.current) {
-            // Printer just became connected — process any pending queue
-            processPendingQueue();
+            // Printer just became connected — process all currently queued jobs
+            jobsRef.current.forEach(job => processQueuedJob(job));
         }
         prevPrinterRef.current = printer;
-    }, [printer, processPendingQueue]);
+    }, [printer, processQueuedJob]);
+
+    // ── Auto-print: watch orders for new Preparing items (original approach) ─
+    // This is the primary trigger for auto-printing.
+    // No API dependency — generates receipt directly from order data and sends via BT.
+    const printedOrderIdsRef = useRef<Set<string>>(new Set());
+    const ordersInitializedRef = useRef(false);
+
+    useEffect(() => {
+        if (ordersLoading) return;
+        const preparingOrders = orders.filter(
+            o => o.status === 'Preparing' && o.token && o.token >= 201
+        );
+        if (!ordersInitializedRef.current) {
+            ordersInitializedRef.current = true;
+            preparingOrders.forEach(o => printedOrderIdsRef.current.add(o.id));
+            return; // Don't print orders that were already there on load
+        }
+        const newOrders = preparingOrders.filter(
+            o => !printedOrderIdsRef.current.has(o.id)
+        );
+        if (newOrders.length === 0) return;
+        newOrders.forEach(o => printedOrderIdsRef.current.add(o.id));
+        if (!autoPrintRef.current || !printerRef.current) return;
+        newOrders.forEach(async (order) => {
+            const job = {
+                token: order.token,
+                items: order.items.map(i => ({ name: i.name, qty: i.quantity, quantity: i.quantity, price: i.price })),
+                customerName: order.userName,
+                isParcel: order.isParcel || false,
+                note: order.note,
+                totalPrice: order.totalPrice,
+                platformCharges: order.platformCharges || 0,
+            };
+            const receiptText = generateReceiptDataRef.current(job);
+            const ok = await sendToBluetoothPrinterRef.current(receiptText);
+            if (ok) {
+                toast({ title: `Printed Token ${order.token}`, description: order.userName ? `Order for ${order.userName}` : 'Sent to printer' });
+                // Mark the Firestore print job as completed (best-effort)
+                completeJob(order.id).catch(() => {});
+            }
+        });
+    }, [orders, ordersLoading, toast, completeJob]);
 
     // ── Online orders only (Razorpay-paid, token 201–999) ───────────────────
     const onlineOrders = orders.filter(o =>
@@ -220,7 +264,7 @@ export default function KitchenPage() {
                                     ? "border-emerald-300 bg-emerald-50 text-emerald-600"
                                     : "border-slate-200 bg-white text-slate-400"
                             )}
-                            title={printer ? `Connected: ${printer.name}` : 'No printer connected'}
+                            title={printer ? `Connected: ${printer.name} — reload will disconnect` : 'No printer connected'}
                         >
                             <Bluetooth className="h-5 w-5" />
                         </div>
@@ -336,12 +380,20 @@ export default function KitchenPage() {
                     <TabsContent value="Printer">
                         <div className="max-w-2xl mx-auto py-4 space-y-4">
 
+                            {/* Reload warning banner when printer is connected */}
+                            {printer && (
+                                <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-800">
+                                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                                    <p><span className="font-bold">Don't reload</span> — reloading this page will disconnect the Bluetooth printer. Use the browser's back button or navigate within the app instead.</p>
+                                </div>
+                            )}
+
                             {/* Connection & Settings card */}
                             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                                 <div className="p-5 border-b border-slate-100">
                                     <h3 className="font-black text-lg">Bluetooth Printer</h3>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        New orders print automatically when payment is confirmed. On page reload, any missed receipts print as soon as the printer reconnects.
+                                        New orders print automatically when payment is confirmed. If the printer was offline, tap "Print All Pending" after reconnecting to catch up.
                                     </p>
                                 </div>
                                 <div className="p-5 space-y-5">
@@ -398,59 +450,73 @@ export default function KitchenPage() {
                                         </p>
                                     </div>
 
-                                    {/* Manual test print */}
-                                    {printer && (
-                                        <Button
-                                            variant="outline"
-                                            className="w-full font-bold"
-                                            onClick={async () => {
-                                                const job = {
-                                                    token: 999,
-                                                    items: [
-                                                        { name: 'Test Chai', qty: 2, quantity: 2, price: 15 },
-                                                        { name: 'Test Sandwich', qty: 1, quantity: 1, price: 40 },
-                                                    ],
-                                                    customerName: 'Test Customer',
-                                                    isParcel: true,
-                                                    note: 'Make it spicy, no oil',
-                                                    totalPrice: 70,
-                                                    platformCharges: 0,
-                                                };
-                                                const receiptText = generateReceiptData(job);
-                                                const ok = await sendToBluetoothPrinter(receiptText);
-                                                if (ok) toast({ title: "Test print sent!", description: "Check your printer for Token 999" });
-                                            }}
-                                        >
-                                            <Printer className="h-4 w-4 mr-2" />
-                                            Send Test Print
-                                        </Button>
-                                    )}
+                                    {/* Actions */}
+                                    <div className="flex gap-2 flex-wrap">
+                                        {/* Print All Pending — processes all queued/failed jobs without API auth */}
+                                        {(jobs.length > 0 || failedJobs.length > 0) && (
+                                            <Button
+                                                variant="outline"
+                                                className="flex-1 font-bold border-amber-200 text-amber-700 hover:bg-amber-50"
+                                                onClick={async () => {
+                                                    if (!printer) {
+                                                        toast({ title: 'Connect printer first', variant: 'destructive' });
+                                                        return;
+                                                    }
+                                                    // Reset processedJobsRef so we re-attempt all queued jobs
+                                                    processedJobsRef.current = new Set();
+                                                    let count = 0;
+                                                    for (const job of jobsRef.current) {
+                                                        await processQueuedJob(job);
+                                                        count++;
+                                                    }
+                                                    for (const job of failedJobsRef.current) {
+                                                        await retryJob(job.id).catch(() => {});
+                                                    }
+                                                    toast({ title: `Sent ${count} job${count !== 1 ? 's' : ''} to printer` });
+                                                }}
+                                            >
+                                                <PrinterIcon className="h-4 w-4 mr-2" />
+                                                Print All Pending ({jobs.length + failedJobs.length})
+                                            </Button>
+                                        )}
+
+                                        {/* Manual test print */}
+                                        {printer && (
+                                            <Button
+                                                variant="outline"
+                                                className="flex-1 font-bold"
+                                                onClick={async () => {
+                                                    const job = {
+                                                        token: 999,
+                                                        items: [
+                                                            { name: 'Test Chai', qty: 2, quantity: 2, price: 15 },
+                                                            { name: 'Test Sandwich', qty: 1, quantity: 1, price: 40 },
+                                                        ],
+                                                        customerName: 'Test Customer',
+                                                        isParcel: true,
+                                                        note: 'Make it spicy',
+                                                        totalPrice: 70,
+                                                    };
+                                                    const ok = await sendToBluetoothPrinter(generateReceiptData(job));
+                                                    if (ok) toast({ title: "Test print sent!", description: "Check your printer for Token 999" });
+                                                }}
+                                            >
+                                                <Printer className="h-4 w-4 mr-2" />
+                                                Test Print
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Pending / Failed jobs */}
                             {(jobs.length > 0 || failedJobs.length > 0) && (
                                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                                    <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                                        <div>
-                                            <h3 className="font-black text-lg">Print Queue</h3>
-                                            <p className="text-xs text-muted-foreground mt-0.5">
-                                                {jobs.length} pending · {failedJobs.length} failed
-                                            </p>
-                                        </div>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={async () => {
-                                                const n = await recoverStaleJobs();
-                                                toast({ title: `Recovered ${n} stuck job${n !== 1 ? 's' : ''}` });
-                                                if (printer) processPendingQueue();
-                                            }}
-                                            className="text-xs"
-                                        >
-                                            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                                            Recover stuck
-                                        </Button>
+                                    <div className="p-5 border-b border-slate-100">
+                                        <h3 className="font-black text-base">Pending Queue</h3>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            {jobs.length} queued · {failedJobs.length} failed
+                                        </p>
                                     </div>
                                     <div className="divide-y divide-slate-100">
                                         {[...jobs, ...failedJobs].map(job => (
@@ -478,36 +544,21 @@ export default function KitchenPage() {
                                                     </p>
                                                     {job.error && <p className="text-[10px] text-red-500 mt-0.5 truncate">{job.error}</p>}
                                                 </div>
-                                                <div className="flex gap-2 shrink-0">
-                                                    {(job.status === 'failed' || job.status === 'dead_letter') && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="h-8 text-xs font-bold"
-                                                            onClick={async () => {
-                                                                await retryJob(job.id);
-                                                                if (printer) setTimeout(() => processPendingQueue(), 300);
-                                                            }}
-                                                        >
-                                                            <RotateCcw className="w-3 h-3 mr-1" />
-                                                            Retry
-                                                        </Button>
-                                                    )}
-                                                    {/* Don't print — skip this job without wasting paper */}
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                                                        title="Skip — mark as done without printing"
-                                                        onClick={async () => {
-                                                            await completeJob(job.id);
-                                                            toast({ title: `Token ${job.token} skipped`, description: 'Marked as done without printing' });
-                                                        }}
-                                                    >
-                                                        <SkipForward className="w-3.5 h-3.5 mr-1" />
-                                                        Skip
-                                                    </Button>
-                                                </div>
+                                                {/* Skip — mark done without printing (useful for test orders) */}
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                                                    title="Skip — mark as done without printing"
+                                                    onClick={async () => {
+                                                        await completeJob(job.id).catch(() => {});
+                                                        processedJobsRef.current.add(job.id);
+                                                        toast({ title: `Token ${job.token} skipped`, description: 'Marked as done without printing' });
+                                                    }}
+                                                >
+                                                    <SkipForward className="w-3.5 h-3.5 mr-1" />
+                                                    Skip
+                                                </Button>
                                             </div>
                                         ))}
                                     </div>
@@ -527,7 +578,6 @@ export default function KitchenPage() {
                                             const printedAt = (job as any).completedAt instanceof Date
                                                 ? (job as any).completedAt
                                                 : job.createdAt;
-                                            // Avg lifecycle: completedAt - createdAt (in minutes)
                                             const diffMs = printedAt.getTime() - job.createdAt.getTime();
                                             const diffMin = Math.round(diffMs / 60000);
                                             return (
