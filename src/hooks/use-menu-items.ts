@@ -57,6 +57,7 @@ export function useMenuItems(options: UseMenuItemsOptions = {}): UseMenuItemsRet
                             isActive: data.isActive,
                             isAvailable: data.isAvailable,
                             sortOrder: data.sortOrder,
+                            parcelCharge: typeof data.parcelCharge === 'number' ? data.parcelCharge : 0,
                             tags: data.tags || [],
                             imageUrl: data.imageUrl || "",
                             updatedAt: data.updatedAt,
