@@ -141,7 +141,7 @@ export async function POST(
             const newOtp = generateSecureOTP();
             const newSalt = generateOTPSalt();
             const newHash = hashOTP(newOtp, newSalt);
-            const expiryMinutes = 30;
+            const expiryMinutes = 45;
             const now = new Date();
             const expiresAt = new Date(now.getTime() + expiryMinutes * 60000);
 

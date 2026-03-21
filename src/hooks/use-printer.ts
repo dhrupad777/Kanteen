@@ -168,8 +168,8 @@ export function usePrinter() {
     };
 
     const generateReceiptData = useCallback((job: any): string => {
-        // 32 chars = standard 58mm thermal paper width
-        const W = 32;
+        // 42 chars = standard 80mm thermal paper width
+        const W = 42;
         const divider = (char = '-') => char.repeat(W) + '\n';
 
         // Right-align a value within a fixed total line width

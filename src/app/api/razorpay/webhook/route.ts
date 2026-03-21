@@ -7,7 +7,7 @@ import { logAuditEvent } from '@/lib/audit-logger';
 import { enqueuePrintJobTransaction } from '@/lib/print-queue';
 
 const CAMPUS_ID = 'default';
-const OTP_EXPIRY_MINUTES = 30;
+const OTP_EXPIRY_MINUTES = 45;
 
 /**
  * Razorpay webhook handler (backup payment verification)

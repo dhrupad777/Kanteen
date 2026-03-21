@@ -41,6 +41,8 @@ interface UsePrintQueueRealtimeReturn {
     jobs: PrintJob[];
     /** Failed/dead-letter print jobs */
     failedJobs: PrintJob[];
+    /** Last 20 completed print jobs (for receipt history + avg time) */
+    completedJobs: PrintJob[];
     /** Pending count for badge display */
     pendingCount: number;
     /** Loading state */
@@ -80,12 +82,14 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
 
     const [jobs, setJobs] = useState<PrintJob[]>([]);
     const [failedJobs, setFailedJobs] = useState<PrintJob[]>([]);
+    const [completedJobs, setCompletedJobs] = useState<PrintJob[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isListening, setIsListening] = useState(autoStart);
 
     const unsubscribeQueuedRef = useRef<(() => void) | null>(null);
     const unsubscribeFailedRef = useRef<(() => void) | null>(null);
+    const unsubscribeCompletedRef = useRef<(() => void) | null>(null);
     const previousJobIdsRef = useRef<Set<string>>(new Set());
     const onNewJobRef = useRef(onNewJob);
 
@@ -107,6 +111,10 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
         if (unsubscribeFailedRef.current) {
             unsubscribeFailedRef.current();
             unsubscribeFailedRef.current = null;
+        }
+        if (unsubscribeCompletedRef.current) {
+            unsubscribeCompletedRef.current();
+            unsubscribeCompletedRef.current = null;
         }
     }, []);
 
@@ -203,26 +211,46 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
             }
         );
 
+        // === Listener 3: Completed jobs (receipt history, last 20) ===
+        const completedQuery = query(
+            collection(db, 'print_jobs'),
+            where('status', '==', 'completed'),
+            orderBy('completedAt', 'desc'),
+            limit(20)
+        );
+
+        const unsubCompleted = onSnapshot(
+            completedQuery,
+            (snapshot) => {
+                const completed: PrintJob[] = [];
+                snapshot.forEach((doc) => {
+                    completed.push(parseJob(doc));
+                });
+                setCompletedJobs(completed);
+            },
+            () => { /* non-critical, ignore errors */ }
+        );
+
         unsubscribeQueuedRef.current = unsubQueued;
         unsubscribeFailedRef.current = unsubFailed;
+        unsubscribeCompletedRef.current = unsubCompleted;
 
         return () => {
             unsubQueued();
             unsubFailed();
+            unsubCompleted();
             unsubscribeQueuedRef.current = null;
             unsubscribeFailedRef.current = null;
+            unsubscribeCompletedRef.current = null;
         };
     }, [isListening, user, maxJobs]);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (unsubscribeQueuedRef.current) {
-                unsubscribeQueuedRef.current();
-            }
-            if (unsubscribeFailedRef.current) {
-                unsubscribeFailedRef.current();
-            }
+            if (unsubscribeQueuedRef.current) unsubscribeQueuedRef.current();
+            if (unsubscribeFailedRef.current) unsubscribeFailedRef.current();
+            if (unsubscribeCompletedRef.current) unsubscribeCompletedRef.current();
         };
     }, []);
 
@@ -357,6 +385,7 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
     return {
         jobs,
         failedJobs,
+        completedJobs,
         pendingCount: jobs.length,
         loading,
         error,

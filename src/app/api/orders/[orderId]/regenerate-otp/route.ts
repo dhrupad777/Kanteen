@@ -5,7 +5,7 @@ import { generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils'
 import { logAuditEvent, getClientIP, getUserAgent } from '@/lib/audit-logger';
 import { rateLimit } from '@/lib/rate-limit';
 
-const OTP_EXPIRY_MINUTES = 30;
+const OTP_EXPIRY_MINUTES = 45;
 
 /**
  * Regenerate OTP for an order
