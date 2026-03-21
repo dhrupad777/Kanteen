@@ -278,6 +278,16 @@ export default function StudentDashboardPage() {
                       </div>
                     </>
                   )}
+                  {/* Chinese OEM battery tip — Xiaomi/OPPO/Vivo kill Chrome background by default */}
+                  {!iosNeedsInstall && (
+                    <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl px-3.5 py-3">
+                      <span className="text-base leading-none mt-0.5">⚡</span>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
+                        <span className="font-semibold text-gray-800 dark:text-white">Xiaomi / OPPO / vivo? —</span>{' '}
+                        Allow Chrome <span className="font-semibold">No restrictions</span> in battery settings so notifications reach you in the background.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}

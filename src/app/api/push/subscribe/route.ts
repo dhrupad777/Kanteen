@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
         const sub: PushSubscriptionJSON = body.subscription;
+        const oldEndpoint: string | undefined = body.oldEndpoint;
 
         if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
             return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 });
@@ -39,6 +40,13 @@ export async function POST(request: NextRequest) {
         const docId = `${uid}_${endpointHash}`;
 
         const db = getAdminDb();
+
+        // Clean up stale subscription when FCM token rotates (pushsubscriptionchange)
+        if (oldEndpoint && oldEndpoint !== sub.endpoint) {
+            const oldHash = createHash('sha256').update(oldEndpoint).digest('hex').slice(0, 16);
+            db.collection('push_subscriptions').doc(`${uid}_${oldHash}`).delete().catch(() => {});
+        }
+
         await db.collection('push_subscriptions').doc(docId).set({
             uid,
             endpoint: sub.endpoint,
