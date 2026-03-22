@@ -14,6 +14,8 @@ import { StudentDashboardSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { useOrderReadyAlert, playOrderChime } from '@/hooks/use-order-ready-alert';
+import { useInstallPrompt } from '@/hooks/use-install-prompt';
+import { PwaInstallBanner } from '@/components/pwa-install-banner';
 
 export default function StudentDashboardPage() {
   const { orders, loading: ordersLoading } = useOrders();
@@ -33,6 +35,7 @@ export default function StudentDashboardPage() {
   }, []);
 
   const { supported, permission, subscribed, iosNeedsInstall, subscribe, unsubscribe, loading: pushLoading } = usePushNotifications();
+  const { isInstallable, isInstalled, installApp } = useInstallPrompt();
 
   const handleBellClick = useCallback(async () => {
     if (!user) return;
@@ -437,6 +440,14 @@ export default function StudentDashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* PWA install banner — slides up from bottom after 4s, snoozeable 14 days */}
+      <PwaInstallBanner
+        isInstallable={isInstallable}
+        isInstalled={isInstalled}
+        iosNeedsInstall={iosNeedsInstall}
+        installApp={installApp}
+      />
     </div>
   );
 }

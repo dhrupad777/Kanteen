@@ -7,7 +7,13 @@ const KEEP_CACHES  = [STATIC_CACHE, PAGE_CACHE];
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
 self.addEventListener('install', (event) => {
-    event.waitUntil(self.skipWaiting());
+    event.waitUntil(
+        Promise.all([
+            self.skipWaiting(),
+            // Pre-cache offline fallback so it's available from the very first visit
+            caches.open(STATIC_CACHE).then(cache => cache.add('/offline.html')),
+        ])
+    );
 });
 
 self.addEventListener('activate', (event) => {
@@ -67,7 +73,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // HTML page navigations — network-first, fall back to cache for offline
+    // HTML page navigations — network-first, fall back to cache, then offline page
     if (request.mode === 'navigate') {
         event.respondWith(
             fetch(request).then(res => {
@@ -76,7 +82,9 @@ self.addEventListener('fetch', (event) => {
                     caches.open(PAGE_CACHE).then(cache => cache.put(request, clone));
                 }
                 return res;
-            }).catch(() => caches.match(request))
+            }).catch(() =>
+                caches.match(request).then(cached => cached || caches.match('/offline.html'))
+            )
         );
         return;
     }
