@@ -49,14 +49,11 @@ export function MenuDisplay() {
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="px-4 py-3.5 bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200/50 dark:border-amber-800/30 rounded-2xl"
+                        className="px-3 py-2.5 text-center bg-amber-100/50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 rounded-xl"
                     >
-                        <div className="flex gap-2.5 items-start">
-                            <span className="text-amber-500 text-lg leading-none mt-0.5">💡</span>
-                            <span className="text-sm font-medium text-amber-900 dark:text-amber-100 leading-snug">
-                                {note}
-                            </span>
-                        </div>
+                        <span className="text-sm font-black text-amber-900 dark:text-amber-100 uppercase tracking-tight">
+                            Note: {note}
+                        </span>
                     </motion.div>
                 )}
             </div>
