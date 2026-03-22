@@ -13,10 +13,24 @@ import { MenuDisplay } from '@/components/menu-display';
 import { StudentDashboardSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
+import { useOrderReadyAlert, playOrderChime } from '@/hooks/use-order-ready-alert';
 
 export default function StudentDashboardPage() {
   const { orders, loading: ordersLoading } = useOrders();
   const { user, userProfile, loading: authLoading } = useAuth();
+
+  // In-app chime + vibration when order status → Ready
+  useOrderReadyAlert(orders, user?.uid);
+
+  // Also play chime when service worker broadcasts a push (covers bg → fg transition)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'KANTEEN_ORDER_READY') playOrderChime();
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, []);
 
   const { supported, permission, subscribed, iosNeedsInstall, subscribe, unsubscribe, loading: pushLoading } = usePushNotifications();
 

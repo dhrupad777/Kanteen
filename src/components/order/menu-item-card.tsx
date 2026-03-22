@@ -19,25 +19,19 @@ export function MenuItemCard({ item }: MenuItemCardProps) {
     const isUnavailable = !item.isAvailable;
     const isMRP = item.price === null;
 
-    const triggerHaptics = () => {
-        if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            navigator.vibrate(50);
-        }
-    };
-
     const handleAdd = () => {
         if (isUnavailable || isMRP) return;
-        triggerHaptics();
+        navigator.vibrate?.([30, 10, 40]); // click-clack feel
         addItem(item);
     };
 
     const handleIncrement = () => {
-        triggerHaptics();
+        navigator.vibrate?.(20); // crisp tap
         increment(item.id);
     };
 
     const handleDecrement = () => {
-        triggerHaptics();
+        navigator.vibrate?.([15, 8, 15]); // double-tap — distinct from increment
         decrement(item.id);
     };
 
