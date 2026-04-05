@@ -96,7 +96,8 @@ env:
     availability:
       - RUNTIME
 
-  # Web Push (VAPID) keys — required for push notifications
+  # Web Push (VAPID) keys — stored as Firebase secrets (not in git).
+  # Run to set: firebase apphosting:secrets:set VAPID_PRIVATE_KEY
   - variable: NEXT_PUBLIC_VAPID_PUBLIC_KEY
     value: BOQIJQ8d1ey4cwZlqj1CIKYhQjIgahiYPfMHZp6Vf8AAOX0ygebKoT1yPZu7D5s-aFLl42_kYO8fmFV9maOydgU
     availability:
@@ -104,7 +105,7 @@ env:
       - RUNTIME
 
   - variable: VAPID_PRIVATE_KEY
-    value: KcyocXKTS3ZF0FKgeOmVyjCHWwfDDAwptBgIpb5HVNI
+    secret: VAPID_PRIVATE_KEY
     availability:
       - RUNTIME
 
