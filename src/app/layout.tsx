@@ -1,5 +1,5 @@
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Poppins } from 'next/font/google';
 import { Toaster } from "@/components/ui/toaster"
 import './globals.css';
@@ -19,6 +19,11 @@ const poppins = Poppins({
 });
 
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
   title: 'Kanteen MRC',
   description: 'Canteen Order Management System',
@@ -33,7 +38,7 @@ export const metadata: Metadata = {
   },
 };
 
-const GA_MEASUREMENT_ID = "G-9FCB95HMZ5";
+const GA_MEASUREMENT_ID = "G-M9S44FJW31";
 const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 
 export default function RootLayout({

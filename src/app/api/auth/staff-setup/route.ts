@@ -92,11 +92,12 @@ export async function POST(request: NextRequest) {
             results.push({ email: account.email, role: account.role, action });
         }
 
-        // Write to Firestore for reference (not used for auth)
+        // Write accounts WITH passwords to Firestore — staff-login reads this to verify credentials
+        // before setting custom claims. Firestore security rules must restrict this collection
+        // to server-side access only (no client reads allowed).
         await adminDb.collection('staff_credentials').doc('config').set({
-            accounts: (accounts as any[]).map(a => ({ email: a.email, role: a.role })),
+            accounts: (accounts as any[]).map(a => ({ email: a.email, password: a.password, role: a.role })),
             setupAt: new Date().toISOString(),
-            note: 'Auth is handled by Firebase Authentication. Change passwords in Firebase Console → Authentication → Users.',
         });
 
         const batch = adminDb.batch();
@@ -110,6 +111,6 @@ export async function POST(request: NextRequest) {
 
     } catch (error: any) {
         console.error('[staff-setup] Error:', error?.message ?? error);
-        return NextResponse.json({ error: 'Setup failed.', detail: error?.message }, { status: 500 });
+        return NextResponse.json({ error: 'Setup failed.' }, { status: 500 });
     }
 }

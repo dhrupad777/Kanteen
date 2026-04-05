@@ -50,7 +50,7 @@ function setCachedManagerRole(email: string, value: boolean) {
 
 export const OrderProvider = ({ children }: { children: ReactNode }) => {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const { user, loading: authLoading } = useAuth();
   const [isManager, setIsManager] = useState<boolean | null>(null);
@@ -94,7 +94,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       const data = await response.json();
       const fetchedOrders: Order[] = data.orders.map((o: any) => ({
         ...o,
-        createdAt: new Date(o.createdAt),
+        createdAt: o.createdAt ? new Date(o.createdAt) : new Date(0),
       }));
       fetchedOrders.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
       setOrders(fetchedOrders);
@@ -107,6 +107,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (authLoading || isManager === null) return;
+    setLoading(true);
 
     const listeners: (() => void)[] = [];
     const ordersMap = new Map<string, Order>();
@@ -190,7 +191,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           const data = await response.json();
           publicMap.clear();
           (data.orders as any[]).forEach((o) => {
-            publicMap.set(o.id, { ...o, createdAt: new Date(o.createdAt) });
+            publicMap.set(o.id, { ...o, createdAt: o.createdAt ? new Date(o.createdAt) : new Date(0) });
           });
           rebuildAndSet();
         } catch {

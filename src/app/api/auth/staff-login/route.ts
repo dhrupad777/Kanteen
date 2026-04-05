@@ -10,12 +10,20 @@ interface StaffAccount {
     role: 'kitchen_staff' | 'kitchen_manager' | 'admin';
 }
 
+// Owner emails live server-side only — never exposed in the client bundle.
+// These accounts get isOwner: true in their Firebase custom claims.
+const OWNER_EMAILS = [
+    "dhrupadrajpurohit@gmail.com",
+    "manager.mrc@gmail.com",
+];
+
 /**
  * POST /api/auth/staff-login
  *
  * Verifies staff email + password against Firestore `staff_credentials/config`.
- * On success, returns a Firebase custom token so the client can sign in
- * with signInWithCustomToken() and use user.getIdToken() for API calls.
+ * On success, sets Firebase custom claims (role, isOwner) on the user's Auth record
+ * and returns the email + role. Client then signs in with signInWithEmailAndPassword
+ * and force-refreshes the token to pick up the new claims.
  *
  * Credentials are stored in Firestore and can be changed via Firebase Console:
  *   Collection: staff_credentials
@@ -63,28 +71,36 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
         }
 
-        // ── Create Firebase custom token with role claim ──────────────────────────
-        // The role claim is read by getActorRoleFromToken() in existing API routes,
-        // so OTP verification, status updates, etc. work without any changes.
-        const customToken = await getAdminAuth().createCustomToken(account.email, {
+        // ── Set custom claims on the Firebase Auth user ───────────────────────────
+        // setCustomUserClaims only requires Firebase Auth admin access (no token-signing
+        // IAM permission needed), so this works on App Hosting without extra IAM roles.
+        // The client will call signInWithEmailAndPassword + getIdToken(true) to pick up claims.
+        const isOwner = account.role === 'kitchen_manager' &&
+            OWNER_EMAILS.includes(account.email.toLowerCase());
+
+        let userRecord;
+        try {
+            userRecord = await getAdminAuth().getUserByEmail(account.email);
+        } catch (e: any) {
+            if (e?.code === 'auth/user-not-found') {
+                console.error(`[staff-login] Firebase Auth user not found for ${account.email}. Create the user in Firebase Console or run the staff-setup script.`);
+                return NextResponse.json({ error: 'Staff account not provisioned. Contact admin.' }, { status: 503 });
+            }
+            throw e;
+        }
+
+        await getAdminAuth().setCustomUserClaims(userRecord.uid, {
             role: account.role,
+            isOwner,
         });
 
         return NextResponse.json({
-            customToken,
             email: account.email,
             role: account.role,
         });
 
     } catch (error: any) {
-        console.error('[staff-login] Error:', error?.message ?? error);
-        // If createCustomToken fails (service account permission issue), surface a helpful message
-        if (error?.code === 'app/invalid-credential' || error?.message?.includes('service account')) {
-            return NextResponse.json(
-                { error: 'Server configuration error: custom token signing unavailable. Add FIREBASE_SERVICE_ACCOUNT_KEY to env vars.' },
-                { status: 503 }
-            );
-        }
+        console.error('[staff-login] Error:', error?.code, error?.message ?? error);
         return NextResponse.json({ error: 'Authentication failed. Please try again.' }, { status: 500 });
     }
 }

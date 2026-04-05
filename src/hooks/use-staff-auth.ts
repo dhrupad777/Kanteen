@@ -8,12 +8,10 @@ import { signOut } from "@/lib/auth";
 const STAFF_ROLES = ["kitchen_staff", "kitchen_manager", "admin"] as const;
 type StaffRole = (typeof STAFF_ROLES)[number];
 
-const OWNER_EMAIL = "dhrupadrajpurohit@gmail.com";
-
 interface StaffAuthResult {
     loading: boolean;
     isAuthenticated: boolean; // any valid staff role
-    isOwner: boolean;         // kitchen_manager AND owner email
+    isOwner: boolean;         // kitchen_manager with isOwner custom claim
     email: string | null;
     role: StaffRole | null;
     signOutStaff: () => Promise<void>;
@@ -36,6 +34,7 @@ export function useStaffAuth(): StaffAuthResult {
     const pathname = usePathname();
 
     const [role, setRole] = useState<StaffRole | null>(null);
+    const [isOwner, setIsOwner] = useState(false);
     const [claimsLoading, setClaimsLoading] = useState(true);
 
     useEffect(() => {
@@ -43,25 +42,31 @@ export function useStaffAuth(): StaffAuthResult {
 
         if (!user) {
             setRole(null);
+            setIsOwner(false);
             setClaimsLoading(false);
             return;
         }
 
+        // Try cached token first. If no role claim is present, force-refresh once —
+        // this covers the case where custom claims were set after the user's last sign-in
+        // (the cached ID token predates the claim update and won't have them).
         user.getIdTokenResult()
+            .then((result) => {
+                if (result.claims.role) return result;
+                return user.getIdTokenResult(true); // force-refresh to pick up new claims
+            })
             .then((result) => {
                 const claimed = result.claims.role as string | undefined;
                 const validRole = STAFF_ROLES.find((r) => r === claimed) ?? null;
                 setRole(validRole);
+                setIsOwner(validRole === 'kitchen_manager' && result.claims.isOwner === true);
             })
-            .catch(() => setRole(null))
+            .catch(() => { setRole(null); setIsOwner(false); })
             .finally(() => setClaimsLoading(false));
     }, [user, authLoading]);
 
     const loading = authLoading || claimsLoading;
     const isAuthenticated = !loading && role !== null;
-    const isOwner = isAuthenticated &&
-        role === "kitchen_manager" &&
-        user?.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
 
     // Redirect to login if not authenticated once loading is done
     useEffect(() => {

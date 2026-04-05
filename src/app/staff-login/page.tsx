@@ -22,16 +22,20 @@ function StaffLoginForm() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // If already signed in as staff, redirect away
+    // If already signed in as staff, redirect away.
+    // Force-refresh the token so newly-set custom claims (e.g. after set-owner-claims script)
+    // are picked up without requiring the user to sign out and back in.
     useEffect(() => {
         if (authLoading || !user) return;
-        user.getIdTokenResult().then((result) => {
-            const role = result.claims.role as string | undefined;
-            const staffRoles = ["kitchen_staff", "kitchen_manager", "admin"];
-            if (role && staffRoles.includes(role)) {
-                router.replace(redirect);
-            }
-        });
+        user.getIdTokenResult()
+            .then((result) => result.claims.role ? result : user.getIdTokenResult(true))
+            .then((result) => {
+                const role = result.claims.role as string | undefined;
+                const staffRoles = ["kitchen_staff", "kitchen_manager", "admin"];
+                if (role && staffRoles.includes(role)) {
+                    router.replace(redirect);
+                }
+            });
     }, [user, authLoading, router, redirect]);
 
     async function handleSubmit(e: React.FormEvent) {
@@ -45,20 +49,29 @@ function StaffLoginForm() {
         setLoading(true);
 
         try {
-            // Sign in directly with Firebase Auth (no server roundtrip needed)
-            const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+            // Step 1: Verify credentials server-side. The API checks Firestore and calls
+            // setCustomUserClaims(uid, { role, isOwner }) — no token-signing needed.
+            const res = await fetch('/api/auth/staff-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email.trim(), password }),
+            });
 
-            // Force-refresh so custom role claims are available immediately
+            const data = await res.json();
+
+            if (!res.ok) {
+                setError(data.error ?? "Invalid email or password.");
+                return;
+            }
+
+            // Step 2: Sign in with Firebase Auth (email + password).
+            // Claims were just set server-side; force-refresh the token to pick them up.
+            const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
             await credential.user.getIdToken(true);
 
             router.replace(redirect);
         } catch (err: any) {
-            const code = err?.code ?? "";
-            if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
-                setError("Invalid email or password.");
-            } else {
-                setError(err?.message ?? "Something went wrong. Please try again.");
-            }
+            setError(err?.message ?? "Something went wrong. Please try again.");
         } finally {
             setLoading(false);
         }

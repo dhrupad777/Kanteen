@@ -2,7 +2,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useRef } from 'react';
 import { signInWithEmailAndPassword, signOut, User, getRedirectResult } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
@@ -48,6 +48,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // redirect is in progress). This prevents any flash of the sign-in screen on every load,
   // not just when the sessionStorage key happens to be set.
   const [processingRedirect, setProcessingRedirect] = useState(!BYPASS_AUTH);
+  // Ref mirrors processingRedirect so the onAuthStateChanged closure always reads the
+  // latest value without needing to re-subscribe the listener.
+  const processingRedirectRef = useRef(!BYPASS_AUTH);
   const router = useRouter();
 
   // Always call getRedirectResult on mount — it resolves in ~1 frame when there's no
@@ -56,20 +59,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (BYPASS_AUTH) { setProcessingRedirect(false); return; }
 
-    getRedirectResult(auth).then((result) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
       sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+      processingRedirectRef.current = false;
+      setProcessingRedirect(false);
+    };
+
+    // Hard cap: if getRedirectResult hasn't resolved in 3 s, unblock the app anyway.
+    // Covers slow Firebase init, bad networks, and PWA/WebView environments where the
+    // call can hang silently.
+    const timeoutId = setTimeout(finish, 3000);
+
+    getRedirectResult(auth).then((result) => {
+      clearTimeout(timeoutId);
       if (result?.user) {
-        // Set user immediately so the sign-in screen never flashes in the gap
-        // between processingRedirect becoming false and onAuthStateChanged firing.
         setUser(result.user);
         router.replace('/student');
       }
-      setProcessingRedirect(false);
+      finish();
     }).catch((error) => {
+      clearTimeout(timeoutId);
       console.error('[Auth] getRedirectResult failed:', error?.code, error?.message);
-      sessionStorage.removeItem(REDIRECT_PENDING_KEY);
-      setProcessingRedirect(false);
+      finish();
     });
+
+    return () => clearTimeout(timeoutId);
   }, [router]);
 
   useEffect(() => {
@@ -122,7 +139,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setUser(null);
         setUserProfile(null);
-        setLoading(false);
+        if (!processingRedirectRef.current) {
+          setLoading(false);
+        } else {
+          // getRedirectResult hasn't settled yet — clear loading after a short grace
+          // period so pages are never permanently blocked if the redirect is delayed
+          // beyond the 3 s timeout (e.g. the timeout fired but onAuthStateChanged
+          // fires slightly after due to event ordering).
+          setTimeout(() => setLoading(false), 3500);
+        }
       }
     });
 

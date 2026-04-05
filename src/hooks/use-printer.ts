@@ -8,6 +8,7 @@ const ESCPOS = {
     INIT: ESC + '@',
     ALIGN_CENTER: ESC + 'a' + '\x01',
     ALIGN_LEFT: ESC + 'a' + '\x00',
+    ALIGN_RIGHT: ESC + 'a' + '\x02',
     BOLD_ON: ESC + 'E' + '\x01',
     BOLD_OFF: ESC + 'E' + '\x00',
     DOUBLE_HEIGHT: GS + '!' + '\x10',
@@ -203,59 +204,75 @@ export function usePrinter() {
             r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
         }
 
-        // ── Items — double-height for easy reading while assembling ───────
+        // ── Items — two-line format: bold name on line 1, price right-aligned on line 2 ──
         r += ESCPOS.ALIGN_LEFT;
         (job.items || []).forEach((item: any) => {
             const qty = item.qty || item.quantity || 1;
             const unitPrice = item.price || 0;
             const lineTotal = unitPrice * qty;
-            const qtyLabel = `${qty}x`;
-            const priceLabel = lineTotal > 0 ? `Rs.${lineTotal}` : '';
 
-            // Name gets whatever space is left between qty and price
-            const available = W - qtyLabel.length - 1 - priceLabel.length - 1;
-            const rawName = item.name || '';
-            const name = rawName.length > available
-                ? rawName.substring(0, available - 2) + '..'
-                : rawName.padEnd(available);
+            // Line 1: qty + name — double-height + bold for easy reading
+            r += ESCPOS.BOLD_ON + ESCPOS.DOUBLE_HEIGHT;
+            r += `${qty}x ${item.name || ''}\n`;
+            r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
 
-            r += ESCPOS.DOUBLE_HEIGHT;
-            r += `${qtyLabel} ${name} ${priceLabel}\n`;
-            r += ESCPOS.NORMAL_SIZE;
+            // Line 2: price right-aligned in normal size (only if price is known)
+            if (lineTotal > 0) {
+                const priceStr = `Rs.${lineTotal}`;
+                r += ESCPOS.ALIGN_RIGHT;
+                r += priceStr + '\n';
+                r += ESCPOS.ALIGN_LEFT;
+            }
         });
 
         r += divider();
 
-        // ── NOTE / Kitchen instructions — right after items ───────
-        // This is what the cook reads while preparing the order.
-        const note = (job.note || '').trim();
-        if (note) {
-            r += ESCPOS.BOLD_ON;
-            r += 'NOTE:\n';
-            r += ESCPOS.BOLD_OFF;
-            // Word-wrap note to fit within W chars
-            const words = note.split(' ');
-            let currentLine = '';
-            words.forEach((word: string) => {
-                if ((currentLine + ' ' + word).trim().length <= W) {
-                    currentLine = (currentLine + ' ' + word).trim();
-                } else {
-                    r += currentLine + '\n';
-                    currentLine = word;
-                }
-            });
-            if (currentLine) r += currentLine + '\n';
-            r += divider();
-        }
-
         // ── Billing ───────────────────────────────────────────────
         r += ESCPOS.ALIGN_LEFT;
+        if (job.parcelCharge > 0) {
+            r += totalLine('Parcel Packaging', `Rs. ${job.parcelCharge}`);
+        }
         r += totalLine('Platform Fee', 'Rs. 0');
         r += ESCPOS.DOUBLE_HEIGHT + ESCPOS.BOLD_ON;
         r += totalLine('TOTAL', `Rs. ${job.totalPrice || 0}`);
         r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
 
         r += divider();
+
+        // ── NOTE — just above order-type banner so cook sees it last ──
+        const noteWords = (job.note || '').trim().split(' ');
+        const note = noteWords.slice(0, 30).join(' ') + (noteWords.length > 30 ? '…' : '');
+        if (note.trim()) {
+            r += ESCPOS.BOLD_ON;
+            r += 'NOTE:\n';
+            r += ESCPOS.BOLD_OFF;
+            // Word-wrap to W chars, max 2 lines
+            const words = note.split(' ');
+            let currentLine = '';
+            let lineCount = 0;
+            const MAX_NOTE_LINES = 2;
+            for (const word of words) {
+                const candidate = (currentLine + ' ' + word).trim();
+                if (candidate.length <= W) {
+                    currentLine = candidate;
+                } else {
+                    if (lineCount >= MAX_NOTE_LINES - 1) {
+                        // Would exceed 2 lines — truncate last line
+                        const truncated = currentLine.length > W - 3
+                            ? currentLine.slice(0, W - 3) + '...'
+                            : currentLine + '...';
+                        r += truncated + '\n';
+                        lineCount++;
+                        break;
+                    }
+                    r += currentLine + '\n';
+                    lineCount++;
+                    currentLine = word;
+                }
+            }
+            if (currentLine && lineCount < MAX_NOTE_LINES) r += currentLine + '\n';
+            r += divider();
+        }
 
         // ── PARCEL / ONLINE-ORDER — large, unmissable ─────────────
         r += divider('=');

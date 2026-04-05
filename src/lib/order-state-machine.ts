@@ -26,9 +26,9 @@ const STATE_TRANSITIONS: Record<OrderStatus, TransitionRule> = {
         allowedRoles: ['kitchen_staff', 'kitchen_manager', 'admin'],
     },
     'Ready': {
-        to: ['PICKED_UP', 'CANCELLED'],
+        to: ['Preparing', 'PICKED_UP', 'CANCELLED'],
         allowedRoles: ['kitchen_staff', 'kitchen_manager', 'admin'],
-        requiresOtp: true, // OTP required to move to PICKED_UP
+        requiresOtp: true, // OTP required to move to PICKED_UP (not for revert)
     },
     'PICKED_UP': {
         to: [], // Terminal state

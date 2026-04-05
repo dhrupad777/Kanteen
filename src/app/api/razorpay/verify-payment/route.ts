@@ -3,7 +3,7 @@ import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import Razorpay from 'razorpay';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
-import { verifyRazorpaySignature } from '@/lib/crypto-utils';
+import { verifyRazorpaySignature, generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
 import { logAuditEvent, getUserAgent } from '@/lib/audit-logger';
 import { enqueuePrintJobTransaction } from '@/lib/print-queue';
 import type { VerifyPaymentRequest, VerifyPaymentResponse } from '@/types';
@@ -150,6 +150,8 @@ export async function POST(request: NextRequest) {
         const counterRef = db.collection('order_counters').doc(`${CAMPUS_ID}_${dateKey}`);
         const orderRef = db.collection('orders').doc(orderId);
 
+        const OTP_EXPIRY_MINUTES = 45;
+
         const result = await db.runTransaction(async (transaction) => {
             // Get order
             const orderDoc = await transaction.get(orderRef);
@@ -177,11 +179,9 @@ export async function POST(request: NextRequest) {
 
             // Check if already paid (idempotent)
             if (orderData.payment?.status === 'paid') {
-                // Already processed, return existing data
                 return {
                     orderId: orderId,
                     token: orderData.token,
-                    otp: null, // OTP was already shown once
                     alreadyProcessed: true,
                 };
             }
@@ -211,8 +211,13 @@ export async function POST(request: NextRequest) {
                 updatedAt: FieldValue.serverTimestamp(),
             }, { merge: true });
 
+            // ====== GENERATE SECURE OTP (same as webhook path) ======
+            const otp = generateSecureOTP();
+            const otpSalt = generateOTPSalt();
+            const otpHash = hashOTP(otp, otpSalt);
+            const otpExpiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
             // ====== UPDATE ORDER ======
-            // Note: OTP is NOT generated here - it will be generated when staff marks the order as "Ready"
             transaction.update(orderRef, {
                 status: 'Preparing',
                 'payment.status': 'paid',
@@ -222,6 +227,10 @@ export async function POST(request: NextRequest) {
                 'payment.amount': payment.amount,
                 'payment.currency': payment.currency,
                 token: nextToken,
+                otpHash,
+                otpSalt,
+                otpExpiresAt,
+                otpAttempts: 0,
                 dateKey: dateKey,
                 'audit.updatedAt': FieldValue.serverTimestamp(),
                 'audit.updatedBy': uid,
@@ -232,6 +241,8 @@ export async function POST(request: NextRequest) {
                 orderId,
                 token: nextToken,
                 items: orderData.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
+                totalPrice: orderData.totalPrice || 0,
+                parcelCharge: orderData.parcelCharge || 0,
                 studentName: orderData.userName || undefined,
                 studentEmail: orderData.userEmail || undefined,
                 note: orderData.note || undefined,

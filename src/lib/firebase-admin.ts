@@ -30,9 +30,28 @@ function getApp(): admin.app.App {
                       process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
                       FIREBASE_PROJECT_ID;
 
-    console.log(`Initializing Firebase Admin with project: ${projectId}`);
+    // If a service account key is provided via env var, use it explicitly.
+    const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    if (serviceAccountKey) {
+        try {
+            const credential = admin.credential.cert(JSON.parse(serviceAccountKey));
+            _app = admin.initializeApp({ credential, projectId });
+            console.log(`Firebase Admin initialized with service account key (project: ${projectId})`);
+            return _app;
+        } catch (e) {
+            console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY:', e);
+        }
+    }
 
-    _app = admin.initializeApp({ projectId });
+    // On Cloud Run / App Hosting, applicationDefault() picks up the attached
+    // service account automatically. This works for Firestore, Auth reads/writes,
+    // and setCustomUserClaims — everything except createCustomToken (which needs
+    // the Service Account Token Creator IAM role on the attached SA).
+    _app = admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
+        projectId,
+    });
+    console.log(`Firebase Admin initialized with ADC (project: ${projectId})`);
     return _app;
 }
 

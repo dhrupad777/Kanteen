@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useStaffAuth } from "@/hooks/use-staff-auth";
 import {
-    collection, onSnapshot, writeBatch, doc, serverTimestamp, query, orderBy
+    collection, onSnapshot, writeBatch, doc, setDoc, serverTimestamp, query, orderBy
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { MenuItem, MENU_CATEGORIES, MenuCategory } from "@/types/menu-item";
@@ -13,12 +13,16 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
     Loader2, Search, Save, ChevronDown, ChevronUp, AlertTriangle,
-    ArrowLeft, RotateCcw, LogOut
+    ArrowLeft, RotateCcw, LogOut, Power, Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { MenuManager } from "@/components/menu-manager";
+import { MenuCatalogEditor } from "@/components/menu-catalog-editor";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { OrderTracker } from "@/components/order-tracker";
+import { OrderCleanup } from "@/components/order-cleanup";
 
 const CATEGORY_EMOJI: Record<MenuCategory, string> = {
     tea_beverage: "☕",
@@ -32,6 +36,7 @@ const CATEGORY_EMOJI: Record<MenuCategory, string> = {
     sabji:        "🍲",
     indian_rice:  "🍚",
     daily_menu:   "🍽️",
+    daily_regulars: "🍛",
 };
 
 export default function CounterPage() {
@@ -41,7 +46,40 @@ export default function CounterPage() {
     const [items, setItems] = useState<MenuItem[]>([]);
     const [itemsLoading, setItemsLoading] = useState(true);
 
+    // Online ordering toggle (controls /student page)
+    const [kitchenActive, setKitchenActive] = useState(true);
+    const [togglingKitchen, setTogglingKitchen] = useState(false);
+
+    useEffect(() => {
+        const unsub = onSnapshot(
+            doc(db, 'canteen_state', 'settings'),
+            (snap) => { setKitchenActive(snap.exists() ? snap.data().studentOrderingEnabled !== false : true); },
+            () => { /* keep current state on error — counter toggle still works via setDoc */ },
+        );
+        return () => unsub();
+    }, []);
+
+    const toggleKitchen = async () => {
+        setTogglingKitchen(true);
+        const next = !kitchenActive;
+        try {
+            await setDoc(doc(db, 'canteen_state', 'settings'), {
+                studentOrderingEnabled: next,
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+            toast({
+                title: next ? 'Online Ordering Resumed' : 'Online Ordering Paused',
+                description: next ? 'Students can now place orders.' : 'Student ordering is now disabled.',
+            });
+        } catch {
+            toast({ title: 'Failed to update', variant: 'destructive' });
+        } finally {
+            setTogglingKitchen(false);
+        }
+    };
+
     const [pendingChanges, setPendingChanges] = useState<Map<string, boolean>>(new Map());
+    const [priceChanges, setPriceChanges] = useState<Map<string, number>>(new Map());
     const [saving, setSaving] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -79,6 +117,11 @@ export default function CounterPage() {
         const pending = pendingChanges.get(item.id);
         return pending !== undefined ? pending : item.isAvailable;
     }, [pendingChanges]);
+
+    const getEffectivePrice = useCallback((item: MenuItem): number => {
+        const pending = priceChanges.get(item.id);
+        return pending !== undefined ? pending : item.price;
+    }, [priceChanges]);
 
     const groupedItems = useMemo(() => {
         return MENU_CATEGORIES.reduce((acc, cat) => {
@@ -134,6 +177,19 @@ export default function CounterPage() {
         });
     };
 
+    const handlePriceChange = (item: MenuItem, newPrice: number) => {
+        if (isNaN(newPrice) || newPrice < 0) return;
+        setPriceChanges(prev => {
+            const next = new Map(prev);
+            if (newPrice === item.price) {
+                next.delete(item.id);
+            } else {
+                next.set(item.id, newPrice);
+            }
+            return next;
+        });
+    };
+
     const toggleExpanded = (category: string) => {
         setExpandedSections(prev => {
             const next = new Set(prev);
@@ -144,22 +200,30 @@ export default function CounterPage() {
     };
 
     const saveChanges = async () => {
-        if (pendingChanges.size === 0) return;
+        if (pendingChanges.size === 0 && priceChanges.size === 0) return;
         setSaving(true);
         try {
             const batch = writeBatch(db);
-            pendingChanges.forEach((isAvailable, itemId) => {
-                batch.update(doc(db, "menu_items", itemId), {
-                    isAvailable,
-                    updatedAt: serverTimestamp(),
-                });
+            const allAlteredIds = new Set([...pendingChanges.keys(), ...priceChanges.keys()]);
+
+            allAlteredIds.forEach((itemId) => {
+                const updateData: any = { updatedAt: serverTimestamp() };
+                if (pendingChanges.has(itemId)) {
+                    updateData.isAvailable = pendingChanges.get(itemId);
+                }
+                if (priceChanges.has(itemId)) {
+                    updateData.price = priceChanges.get(itemId);
+                }
+                batch.update(doc(db, "menu_items", itemId), updateData);
             });
+
             await batch.commit();
-            const count = pendingChanges.size;
+            const count = allAlteredIds.size;
             setPendingChanges(new Map());
+            setPriceChanges(new Map());
             toast({
                 title: "Changes saved!",
-                description: `Updated availability for ${count} item${count > 1 ? "s" : ""}.`,
+                description: `Updated ${count} item${count > 1 ? "s" : ""}.`,
             });
         } catch (err: any) {
             toast({
@@ -174,6 +238,7 @@ export default function CounterPage() {
 
     const resetChanges = () => {
         setPendingChanges(new Map());
+        setPriceChanges(new Map());
     };
 
     if (authLoading || !isAuthenticated) {
@@ -184,7 +249,7 @@ export default function CounterPage() {
         );
     }
 
-    const hasPendingChanges = pendingChanges.size > 0;
+    const hasAnyPendingChanges = pendingChanges.size > 0 || priceChanges.size > 0;
 
     const getSectionState = (category: MenuCategory) => {
         const sectionItems = groupedItems[category] || [];
@@ -229,6 +294,24 @@ export default function CounterPage() {
                                 {stats.unavailable}
                             </span>
                         )}
+                        {/* Online ordering toggle */}
+                        <button
+                            onClick={toggleKitchen}
+                            disabled={togglingKitchen}
+                            title={kitchenActive ? 'Pause online ordering' : 'Resume online ordering'}
+                            className={cn(
+                                "inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-3 py-1.5 border transition-all",
+                                kitchenActive
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                    : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                            )}
+                        >
+                            {togglingKitchen
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Power className="h-3 w-3" />
+                            }
+                            <span className="hidden sm:inline">{kitchenActive ? 'Online: Active' : 'Online: Off'}</span>
+                        </button>
                         <Button
                             variant="ghost"
                             size="icon"
@@ -243,10 +326,21 @@ export default function CounterPage() {
             </header>
 
             <main className="max-w-3xl mx-auto px-3 sm:px-4 py-4 pb-32">
-                {/* Daily Menu (what's cooking today) */}
-                <div className="mb-6">
-                    <MenuManager />
-                </div>
+                <Tabs defaultValue="management" className="w-full">
+                    <TabsList className="grid w-full grid-cols-4 bg-gray-200/50 p-1 mb-6 rounded-xl">
+                        <TabsTrigger value="management" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm text-xs sm:text-sm">Counter</TabsTrigger>
+                        <TabsTrigger value="catalog" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm text-xs sm:text-sm">Menu Items</TabsTrigger>
+                        <TabsTrigger value="tracker" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm text-xs sm:text-sm">Tracker</TabsTrigger>
+                        <TabsTrigger value="cleanup" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-red-600 data-[state=active]:shadow-sm text-xs sm:text-sm gap-1">
+                            <Trash2 className="h-3.5 w-3.5" />Cancel
+                        </TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="management" className="m-0 space-y-4">
+                        {/* Daily Menu (what's cooking today) */}
+                        <div className="mb-6">
+                            <MenuManager />
+                        </div>
 
                 <div className="mb-4 flex items-center gap-3">
                     <div className="h-px flex-1 bg-gray-200" />
@@ -254,11 +348,11 @@ export default function CounterPage() {
                     <div className="h-px flex-1 bg-gray-200" />
                 </div>
 
-                {hasPendingChanges && (
+                {hasAnyPendingChanges && (
                     <div className="mb-4 flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
                         <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0" />
                         <p className="text-sm font-medium text-orange-700 flex-1">
-                            {pendingChanges.size} unsaved change{pendingChanges.size > 1 ? "s" : ""} — confirm below to apply
+                            {pendingChanges.size + priceChanges.size} unsaved change{pendingChanges.size + priceChanges.size > 1 ? "s" : ""} — confirm below to apply
                         </p>
                     </div>
                 )}
@@ -313,8 +407,11 @@ export default function CounterPage() {
                                         key={item.id}
                                         item={item}
                                         effective={getEffective(item)}
+                                        effectivePrice={getEffectivePrice(item)}
                                         isPending={pendingChanges.has(item.id)}
+                                        isPricePending={priceChanges.has(item.id)}
                                         onToggle={() => toggleItem(item)}
+                                        onPriceChange={(val) => handlePriceChange(item, val)}
                                     />
                                 ))}
                             </ul>
@@ -331,7 +428,7 @@ export default function CounterPage() {
                             const isExpanded = expandedSections.has(cat.value);
                             const state = getSectionState(cat.value);
                             const sectionAvailable = state === "all";
-                            const pendingInSection = sectionItems.filter(i => pendingChanges.has(i.id)).length;
+                            const pendingInSection = sectionItems.filter(i => pendingChanges.has(i.id) || priceChanges.has(i.id)).length;
 
                             return (
                                 <div
@@ -408,8 +505,11 @@ export default function CounterPage() {
                                                     key={item.id}
                                                     item={item}
                                                     effective={getEffective(item)}
+                                                    effectivePrice={getEffectivePrice(item)}
                                                     isPending={pendingChanges.has(item.id)}
+                                                    isPricePending={priceChanges.has(item.id)}
                                                     onToggle={() => toggleItem(item)}
+                                                    onPriceChange={(val) => handlePriceChange(item, val)}
                                                 />
                                             ))}
                                         </ul>
@@ -419,22 +519,34 @@ export default function CounterPage() {
                         })}
                     </div>
                 )}
+                    </TabsContent>
+                    <TabsContent value="catalog" className="m-0">
+                        <MenuCatalogEditor />
+                    </TabsContent>
+                    <TabsContent value="tracker" className="m-0">
+                        <OrderTracker />
+                    </TabsContent>
+                    <TabsContent value="cleanup" className="m-0">
+                        <OrderCleanup />
+                    </TabsContent>
+                </Tabs>
             </main>
 
             <div className={cn(
                 "fixed bottom-0 left-0 right-0 z-50 transition-all duration-300",
-                hasPendingChanges ? "translate-y-0" : "translate-y-full"
+                hasAnyPendingChanges ? "translate-y-0" : "translate-y-full"
             )}>
                 <div className="bg-white border-t border-gray-200 shadow-2xl shadow-black/10">
                     <div className="max-w-3xl mx-auto px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
                         <div className="flex items-center gap-3">
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold text-gray-900 leading-tight">
-                                    {pendingChanges.size} change{pendingChanges.size > 1 ? "s" : ""} pending
+                                    {pendingChanges.size + priceChanges.size} change{pendingChanges.size + priceChanges.size > 1 ? "s" : ""} pending
                                 </p>
                                 <p className="text-xs text-gray-400 mt-0.5">
-                                    {Array.from(pendingChanges.values()).filter(v => !v).length} items going offline,{" "}
-                                    {Array.from(pendingChanges.values()).filter(v => v).length} going online
+                                    {Array.from(pendingChanges.values()).filter(v => !v).length} items offline,{" "}
+                                    {Array.from(pendingChanges.values()).filter(v => v).length} online,{" "}
+                                    {priceChanges.size} price updates
                                 </p>
                             </div>
 
@@ -463,7 +575,7 @@ export default function CounterPage() {
                                 ) : (
                                     <Save className="h-4 w-4 mr-2" />
                                 )}
-                                {saving ? "Saving..." : `Confirm ${pendingChanges.size} Change${pendingChanges.size > 1 ? "s" : ""}`}
+                                {saving ? "Saving..." : `Confirm ${pendingChanges.size + priceChanges.size} Change${pendingChanges.size + priceChanges.size > 1 ? "s" : ""}`}
                             </Button>
                         </div>
                     </div>
@@ -476,40 +588,65 @@ export default function CounterPage() {
 function ItemRow({
     item,
     effective,
+    effectivePrice,
     isPending,
+    isPricePending,
     onToggle,
+    onPriceChange,
 }: {
     item: MenuItem;
     effective: boolean;
+    effectivePrice: number;
     isPending: boolean;
+    isPricePending: boolean;
     onToggle: () => void;
+    onPriceChange: (val: number) => void;
 }) {
+    const isDynamicSide = ['Papad', 'Sweet', 'Salad'].includes(item.name);
+
     return (
         <li className={cn(
             "flex items-center gap-3 px-4 py-3 transition-colors",
             !effective && "bg-gray-50/60",
-            isPending && "bg-orange-50/40"
+            (isPending || isPricePending) && "bg-orange-50/40"
         )}>
             <span className={cn(
                 "h-2 w-2 rounded-full shrink-0 mt-0.5",
                 effective ? "bg-green-400" : "bg-gray-300"
             )} />
 
-            <div className="flex-1 min-w-0">
-                <span className={cn(
-                    "text-sm font-medium leading-tight block truncate",
-                    effective ? "text-gray-800" : "text-gray-400 line-through"
-                )}>
-                    {item.name}
-                </span>
-                <span className="text-xs text-gray-400 mt-0.5 block">
-                    ₹{item.price}
-                    {isPending && (
-                        <span className="ml-2 text-orange-500 font-medium no-underline" style={{ textDecoration: "none" }}>
-                            • unsaved
-                        </span>
-                    )}
-                </span>
+            <div className="flex-1 min-w-0 flex items-center justify-between">
+                <div>
+                    <span className={cn(
+                        "text-sm font-medium leading-tight block truncate",
+                        effective ? "text-gray-800" : "text-gray-400 line-through"
+                    )}>
+                        {item.name}
+                    </span>
+                    <span className="text-xs text-gray-400 mt-0.5 block flex items-center gap-2">
+                        {isDynamicSide ? (
+                             <div className="relative inline-flex items-center">
+                                 <span className="absolute left-1.5 text-[10px] text-gray-400">₹</span>
+                                 <Input 
+                                    type="number" 
+                                    value={effectivePrice} 
+                                    onChange={(e) => onPriceChange(parseFloat(e.target.value) || 0)}
+                                    className="h-6 w-16 pl-4 pr-1 py-0 text-xs shadow-none border-gray-200"
+                                    min="0"
+                                    step="1"
+                                 />
+                             </div>
+                        ) : (
+                            <span>₹{item.price}</span>
+                        )}
+                        
+                        {(isPending || isPricePending) && (
+                            <span className="text-orange-500 font-medium no-underline" style={{ textDecoration: "none" }}>
+                                • unsaved
+                            </span>
+                        )}
+                    </span>
+                </div>
             </div>
 
             <Switch

@@ -6,21 +6,52 @@ import { useRazorpay } from "@/hooks/use-razorpay";
 import { useMenuItems } from "@/hooks/use-menu-items";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag, Package, MessageSquare, AlertTriangle } from "lucide-react";
+import { Plus, Minus, Trash2, ArrowLeft, ShoppingBag, Package, MessageSquare, AlertTriangle, ChevronRight, Lock, Wrench } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { db } from "@/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+
+function isKitchenOpen(): boolean {
+    const now = new Date();
+    const total = now.getHours() * 60 + now.getMinutes();
+    return total >= 8 * 60 && total < 20 * 60 + 45;
+}
 
 export default function CartPage() {
     const router = useRouter();
     const { toast } = useToast();
     const { user } = useAuth();
-    const { items, isHydrated, totalItems, totalPrice, hasDailyItems, increment, decrement, removeItem, clearCart, getCheckoutItems } = useCart();
+    const { items, isHydrated, totalItems, totalPrice, hasDailyItems, increment, decrement, removeItem, clearCart, getCheckoutItems, toggleItemParcel } = useCart();
     const [processing, setProcessing] = useState(false);
-    const [_isParcel, setIsParcel] = useState(false);
-    // Daily menu items always require parcel — lock it ON and disable the toggle
-    const isParcel = hasDailyItems || _isParcel;
+
+    const [kitchenOpen, setKitchenOpen] = useState(() => isKitchenOpen());
+    useEffect(() => {
+        const id = setInterval(() => setKitchenOpen(isKitchenOpen()), 60_000);
+        return () => clearInterval(id);
+    }, []);
+
+    const [orderingEnabled, setOrderingEnabled] = useState<boolean | null>(null);
+    useEffect(() => {
+        const unsub = onSnapshot(
+            doc(db, 'canteen_state', 'settings'),
+            (snap) => {
+                if (snap.exists()) {
+                    const val = snap.data()?.studentOrderingEnabled;
+                    setOrderingEnabled(typeof val === 'boolean' ? val : true);
+                } else {
+                    setOrderingEnabled(true);
+                }
+            },
+            () => setOrderingEnabled(true), // on error, default to open
+        );
+        return () => unsub();
+    }, []);
+    const [parcelSheetOpen, setParcelSheetOpen] = useState(false);
+    const isParcel = hasDailyItems || items.some(i => i.wantParcel && i.category !== 'daily_menu');
     const [note, setNote] = useState('');
 
     // Real-time availability check — fetch all active items (including unavailable ones)
@@ -68,15 +99,26 @@ export default function CartPage() {
             });
             setProcessing(false);
         },
+        onPending: () => {
+            // UPI app was opened — payment may still be processing in the background.
+            // Keep the button disabled (processing=true) and show a non-alarming message.
+            toast({
+                title: "Verifying Payment",
+                description: "Waiting for confirmation from your UPI app...",
+            });
+            // processing stays true → button stays disabled while we wait for webhook
+        },
     });
 
-    // Calculate dynamic parcel charge based on items
-    const parcelCharge = useMemo(() => {
-        const special = items.reduce((sum, item) => sum + (item.parcelCharge ?? 0) * item.qty, 0);
-        const hasNormalItems = items.some(item => item.category !== 'daily_menu');
-        const base = (isParcel && hasNormalItems) ? 5 : 0;
-        return special + base;
-    }, [items, isParcel]);
+    // mainCourseParcel = per-item packaging from Main Course (always applied, set in Firestore)
+    // otherParcel      = ₹5 × qty for each non-Main-Course item the student chose to parcel
+    const { mainCourseParcel, otherParcel, parcelCharge } = useMemo(() => {
+        const mainCourseParcel = items.reduce((sum, item) => sum + (item.parcelCharge ?? 0) * item.qty, 0);
+        const otherParcel = items
+            .filter(i => i.category !== 'daily_menu' && i.wantParcel)
+            .reduce((sum, i) => sum + 5 * i.qty, 0);
+        return { mainCourseParcel, otherParcel, parcelCharge: mainCourseParcel + otherParcel };
+    }, [items]);
 
     const platformCharges = 0; // Platform convenience charges (currently ₹0)
     const finalTotal = totalPrice + parcelCharge + platformCharges;
@@ -88,6 +130,34 @@ export default function CartPage() {
                 <div className="animate-pulse flex flex-col items-center">
                     <div className="h-12 w-12 bg-gray-200 rounded-full mb-4"></div>
                     <div className="h-4 w-32 bg-gray-200 rounded"></div>
+                </div>
+            </div>
+        );
+    }
+
+    if (orderingEnabled === null) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="animate-pulse flex flex-col items-center">
+                    <div className="h-12 w-12 bg-gray-200 rounded-full mb-4"></div>
+                    <div className="h-4 w-32 bg-gray-200 rounded"></div>
+                </div>
+            </div>
+        );
+    }
+
+    if (orderingEnabled === false) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
+                <div className="text-center max-w-sm">
+                    <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-orange-50 flex items-center justify-center">
+                        <Wrench className="h-8 w-8 text-primary" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-3">We&apos;ll be right back</h1>
+                    <p className="text-gray-500 leading-relaxed">
+                        We are adding some new features, see you soon
+                    </p>
+                    <p className="mt-4 text-primary font-bold text-lg">— Kanteen</p>
                 </div>
             </div>
         );
@@ -237,25 +307,76 @@ export default function CartPage() {
                             ))}
                         </div>
 
-                        {/* Parcel Toggle */}
-                        <div className={`flex items-center justify-between px-2 py-3 rounded-xl border ${hasDailyItems ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-200'}`}>
-                            <div className="flex items-center gap-3">
-                                <Package className={`h-5 w-5 ${hasDailyItems ? 'text-orange-500' : 'text-gray-600'}`} />
-                                <div className="flex flex-col">
-                                    <span className="font-medium text-gray-900">Parcel Order</span>
-                                    {hasDailyItems
-                                        ? <span className="text-xs text-orange-600 font-medium">Required for Daily Menu items (+₹{parcelCharge})</span>
-                                        : <span className="text-xs text-gray-500">Add packaging (+₹{parcelCharge})</span>
-                                    }
+                        {/* Parcel Settings — tap to configure per-item */}
+                        <Sheet open={parcelSheetOpen} onOpenChange={setParcelSheetOpen}>
+                            <button
+                                type="button"
+                                onClick={() => setParcelSheetOpen(true)}
+                                className={`w-full flex items-center justify-between px-3 py-3 rounded-xl border text-left transition-colors ${isParcel ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <Package className={`h-5 w-5 shrink-0 ${isParcel ? 'text-orange-500' : 'text-gray-500'}`} />
+                                    <div className="flex flex-col">
+                                        <span className="font-medium text-gray-900 text-sm">Parcel Settings</span>
+                                        <span className={`text-xs ${isParcel ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
+                                            {parcelCharge > 0
+                                                ? `${[hasDailyItems && 'Main Course', otherParcel > 0 && `${items.filter(i => i.wantParcel && i.category !== 'daily_menu').length} other item(s)`].filter(Boolean).join(' + ')} packed · +₹${parcelCharge}`
+                                                : 'Tap to choose which items to pack'}
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                            <Switch
-                                checked={isParcel}
-                                onCheckedChange={hasDailyItems ? undefined : setIsParcel}
-                                disabled={hasDailyItems}
-                                className={hasDailyItems ? 'opacity-80' : ''}
-                            />
-                        </div>
+                                <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
+                            </button>
+
+                            <SheetContent side="bottom" className="rounded-t-3xl pb-8 max-h-[80vh] overflow-y-auto">
+                                <SheetHeader className="mb-4">
+                                    <SheetTitle>Parcel Settings</SheetTitle>
+                                    <SheetDescription>Choose which items you want packaged. Each packed item costs ₹5 extra per unit.</SheetDescription>
+                                </SheetHeader>
+
+                                <div className="space-y-3">
+                                    {items.map((item) => {
+                                        const isMainCourse = item.category === 'daily_menu';
+                                        const packed = isMainCourse || !!item.wantParcel;
+                                        const itemParcelCost = isMainCourse
+                                            ? (item.parcelCharge ?? 0) * item.qty
+                                            : item.wantParcel ? 5 * item.qty : 0;
+
+                                        return (
+                                            <div key={item.itemId} className={`flex items-center gap-3 p-3 rounded-2xl border ${packed ? 'bg-orange-50 border-orange-100' : 'bg-gray-50 border-gray-100'}`}>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
+                                                    <p className="text-xs text-gray-500">
+                                                        {item.qty > 1 && `${item.qty}× · `}
+                                                        {isMainCourse
+                                                            ? itemParcelCost > 0 ? `Packaging: +₹${itemParcelCost}` : 'Packaging included'
+                                                            : packed ? `+₹${itemParcelCost} packaging` : 'Not packed'}
+                                                    </p>
+                                                </div>
+                                                {isMainCourse ? (
+                                                    <div className="flex items-center gap-1.5 text-orange-500">
+                                                        <Lock className="h-3.5 w-3.5" />
+                                                        <span className="text-xs font-medium">Always packed</span>
+                                                    </div>
+                                                ) : (
+                                                    <Switch
+                                                        checked={!!item.wantParcel}
+                                                        onCheckedChange={() => toggleItemParcel(item.itemId)}
+                                                    />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {parcelCharge > 0 && (
+                                    <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+                                        <span className="text-sm font-semibold text-gray-700">Total Packaging</span>
+                                        <span className="text-base font-bold text-orange-600">+₹{parcelCharge}</span>
+                                    </div>
+                                )}
+                            </SheetContent>
+                        </Sheet>
 
                         {/* Kitchen Notes */}
                         <div className="px-2 py-3 bg-gray-50 rounded-xl border border-gray-200">
@@ -269,7 +390,7 @@ export default function CartPage() {
                                 placeholder="e.g., Make it spicy, less oil, no onion..."
                                 value={note}
                                 onChange={(e) => setNote(e.target.value.slice(0, 200))}
-                                className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                className="w-full px-3 py-2 text-base bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                                 maxLength={200}
                             />
                             {note && (
@@ -283,10 +404,16 @@ export default function CartPage() {
                                 <span>Subtotal ({totalItems} items)</span>
                                 <span>₹{totalPrice}</span>
                             </div>
-                            {parcelCharge > 0 && (
+                            {mainCourseParcel > 0 && (
                                 <div className="flex justify-between text-sm text-gray-600">
-                                    <span>Parcel Charges</span>
-                                    <span>₹{parcelCharge}</span>
+                                    <span>Main Course Packaging</span>
+                                    <span>₹{mainCourseParcel}</span>
+                                </div>
+                            )}
+                            {otherParcel > 0 && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                    <span>Other Items Packaging</span>
+                                    <span>₹{otherParcel}</span>
                                 </div>
                             )}
                             <div className="flex justify-between text-sm text-gray-600">
@@ -306,13 +433,20 @@ export default function CartPage() {
                         </p>
                     )}
 
+                    {/* Kitchen closed warning */}
+                    {!kitchenOpen && !paymentLoading && (
+                        <p className="text-xs text-center text-amber-600 font-medium -mb-1">
+                            Kitchen is closed · Ordering available 8:00 AM – 8:45 PM
+                        </p>
+                    )}
+
                     <Button
                         className={`w-full h-14 text-base font-semibold rounded-2xl text-white transition-all ${
-                            hasUnavailableItems
+                            hasUnavailableItems || (!kitchenOpen && !paymentLoading)
                                 ? "bg-gray-300 cursor-not-allowed shadow-none"
                                 : "bg-primary hover:bg-primary/90 shadow-lg shadow-orange-200"
                         }`}
-                        disabled={items.length === 0 || processing || paymentLoading || hasUnavailableItems}
+                        disabled={items.length === 0 || processing || paymentLoading || hasUnavailableItems || (!kitchenOpen && !paymentLoading)}
                         onClick={async () => {
                             if (hasUnavailableItems) return;
                             if (!user?.uid) {
@@ -343,7 +477,7 @@ export default function CartPage() {
                             }
                         }}
                     >
-                        {processing || paymentLoading ? "Processing..." : hasUnavailableItems ? "Remove Unavailable Items" : "Proceed to Pay"}
+                        {processing || paymentLoading ? "Processing..." : hasUnavailableItems ? "Remove Unavailable Items" : !kitchenOpen ? "Kitchen Closed" : "Proceed to Pay"}
                     </Button>
                 </div>
             </div>

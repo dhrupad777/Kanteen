@@ -90,46 +90,52 @@ export async function POST(request: NextRequest) {
             const paymentCurrency = paymentEntity.currency;
 
             // ====== STEP 3: VERIFY PAYMENT FROM RAZORPAY API ======
+            // Credentials are mandatory — if absent, reject immediately.
+            // Skipping this verification would allow orders to be confirmed using
+            // only the webhook payload (which is signed but not independently verified).
             const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
             const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
 
-            if (razorpayKeyId && razorpayKeySecret) {
-                try {
-                    const razorpay = new Razorpay({
-                        key_id: razorpayKeyId,
-                        key_secret: razorpayKeySecret,
+            if (!razorpayKeyId || !razorpayKeySecret) {
+                console.error('Webhook: RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not configured — rejecting');
+                return NextResponse.json({ error: 'Payment service misconfigured' }, { status: 500 });
+            }
+
+            try {
+                const razorpay = new Razorpay({
+                    key_id: razorpayKeyId,
+                    key_secret: razorpayKeySecret,
+                });
+
+                const payment = await razorpay.payments.fetch(razorpayPaymentId);
+
+                // Verify payment details match
+                if (payment.order_id !== razorpayOrderId) {
+                    await logAuditEvent({
+                        eventType: 'PAYMENT_FAILED',
+                        actorId: 'webhook',
+                        ip: clientIP,
+                        details: { error: 'ORDER_ID_MISMATCH', expected: razorpayOrderId, actual: payment.order_id },
                     });
-
-                    const payment = await razorpay.payments.fetch(razorpayPaymentId);
-
-                    // Verify payment details match
-                    if (payment.order_id !== razorpayOrderId) {
-                        await logAuditEvent({
-                            eventType: 'PAYMENT_FAILED',
-                            actorId: 'webhook',
-                            ip: clientIP,
-                            details: { error: 'ORDER_ID_MISMATCH', expected: razorpayOrderId, actual: payment.order_id },
-                        });
-                        return NextResponse.json({ status: 'order_mismatch' }, { status: 400 });
-                    }
-
-                    if (payment.status !== 'captured') {
-                        return NextResponse.json({ status: 'payment_not_captured' });
-                    }
-
-                    if (payment.currency !== 'INR') {
-                        await logAuditEvent({
-                            eventType: 'PAYMENT_FAILED',
-                            actorId: 'webhook',
-                            ip: clientIP,
-                            details: { error: 'CURRENCY_MISMATCH', currency: payment.currency },
-                        });
-                        return NextResponse.json({ status: 'invalid_currency' }, { status: 400 });
-                    }
-                } catch (fetchError) {
-                    console.error('Webhook: Failed to fetch payment from Razorpay — aborting to prevent fraud');
-                    return NextResponse.json({ status: 'payment_fetch_failed' }, { status: 502 });
+                    return NextResponse.json({ status: 'order_mismatch' }, { status: 400 });
                 }
+
+                if (payment.status !== 'captured') {
+                    return NextResponse.json({ status: 'payment_not_captured' });
+                }
+
+                if (payment.currency !== 'INR') {
+                    await logAuditEvent({
+                        eventType: 'PAYMENT_FAILED',
+                        actorId: 'webhook',
+                        ip: clientIP,
+                        details: { error: 'CURRENCY_MISMATCH', currency: payment.currency },
+                    });
+                    return NextResponse.json({ status: 'invalid_currency' }, { status: 400 });
+                }
+            } catch (fetchError) {
+                console.error('Webhook: Failed to fetch payment from Razorpay — aborting to prevent fraud');
+                return NextResponse.json({ status: 'payment_fetch_failed' }, { status: 502 });
             }
 
             // Find order by razorpay_order_id
@@ -256,6 +262,8 @@ export async function POST(request: NextRequest) {
                     userEmail: currentOrderData.userEmail,
                     note: currentOrderData.note,
                     isParcel: currentOrderData.isParcel,
+                    totalPrice: currentOrderData.totalPrice,
+                    parcelCharge: currentOrderData.parcelCharge,
                 };
             });
 
@@ -269,6 +277,8 @@ export async function POST(request: NextRequest) {
                             orderId,
                             token: confirmedResult.token,
                             items: confirmedResult.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
+                            totalPrice: confirmedResult.totalPrice || 0,
+                            parcelCharge: confirmedResult.parcelCharge || 0,
                             studentName: confirmedResult.userName || undefined,
                             studentEmail: confirmedResult.userEmail || undefined,
                             note: confirmedResult.note || undefined,
@@ -307,21 +317,23 @@ export async function POST(request: NextRequest) {
             if (!ordersQuery.empty) {
                 const orderDoc = ordersQuery.docs[0];
                 const orderId = orderDoc.id;
+                const orderRef = db.collection('orders').doc(orderId);
 
-                await db.collection('orders').doc(orderId).update({
-                    'payment.status': 'failed',
-                    'payment.failedAt': FieldValue.serverTimestamp(),
-                    'payment.errorCode': paymentEntity.error_code,
-                    'payment.errorDescription': paymentEntity.error_description,
-                    'audit.updatedAt': FieldValue.serverTimestamp(),
-                    'audit.updatedBy': 'webhook',
-                });
-
-                // Mark webhook event as processed
-                await webhookEventRef.set({
-                    processedAt: FieldValue.serverTimestamp(),
-                    orderId,
-                    status: 'failure_recorded',
+                // Atomic: order update + webhook dedup marker in one transaction
+                await db.runTransaction(async (tx) => {
+                    tx.update(orderRef, {
+                        'payment.status': 'failed',
+                        'payment.failedAt': FieldValue.serverTimestamp(),
+                        'payment.errorCode': paymentEntity.error_code,
+                        'payment.errorDescription': paymentEntity.error_description,
+                        'audit.updatedAt': FieldValue.serverTimestamp(),
+                        'audit.updatedBy': 'webhook',
+                    });
+                    tx.set(webhookEventRef, {
+                        processedAt: FieldValue.serverTimestamp(),
+                        orderId,
+                        status: 'failure_recorded',
+                    });
                 });
 
                 await logAuditEvent({
@@ -349,9 +361,6 @@ export async function POST(request: NextRequest) {
         console.error('Razorpay webhook error:', error instanceof Error ? error.message : 'Unknown error');
         // Return 500 so Razorpay retries the webhook. A 200 response would tell
         // Razorpay "delivered OK" and it would never retry, silently losing the payment.
-        return NextResponse.json(
-            { status: 'error', message: error instanceof Error ? error.message : 'Internal error' },
-            { status: 500 }
-        );
+        return NextResponse.json({ status: 'error' }, { status: 500 });
     }
 }

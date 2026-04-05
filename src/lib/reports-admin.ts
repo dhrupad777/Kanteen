@@ -76,6 +76,6 @@ export async function updateDailyReportOnCompletion(orderData: any) {
         });
         console.log(`Successfully updated daily report for ${new Date().toISOString().split('T')[0]}`);
     } catch (error) {
-        console.error('Error updating daily report:', error);
+        console.error('Error updating daily report:', error instanceof Error ? error.message : 'Unknown error');
     }
 }

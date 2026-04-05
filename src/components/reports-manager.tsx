@@ -93,22 +93,26 @@ export function ReportsManager() {
         const headers = ["Item Name", "Quantity Sold"];
         const rows = Object.entries(report.itemSummary).map(([name, qty]) => [name, qty]);
 
-        let csvContent = "data:text/csv;charset=utf-8,";
+        let csvContent = "";
         csvContent += `Daily Report for ${report.date}\n`;
-        csvContent += `Total Orders, ${report.totalOrders}\n`;
-        csvContent += `Total Revenue, ₹${report.totalRevenue}\n\n`;
+        csvContent += `Total Orders,${report.totalOrders}\n`;
+        csvContent += `Total Revenue,₹${report.totalRevenue}\n\n`;
         csvContent += headers.join(",") + "\n";
         rows.forEach(row => {
             csvContent += row.join(",") + "\n";
         });
 
-        const encodedUri = encodeURI(csvContent);
+        // '\uFEFF' is the UTF-8 BOM — tells Excel to open the file as UTF-8
+        // so ₹ renders correctly instead of appearing as â‚¹
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
+        link.setAttribute("href", url);
         link.setAttribute("download", `Kanteen_Report_${report.date}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
 
     if (loading) {

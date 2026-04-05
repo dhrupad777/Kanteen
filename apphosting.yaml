@@ -95,3 +95,29 @@ env:
     value: kanteen_setup_2024
     availability:
       - RUNTIME
+
+  # Web Push (VAPID) keys — required for push notifications
+  - variable: NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    value: BOQIJQ8d1ey4cwZlqj1CIKYhQjIgahiYPfMHZp6Vf8AAOX0ygebKoT1yPZu7D5s-aFLl42_kYO8fmFV9maOydgU
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: VAPID_PRIVATE_KEY
+    value: KcyocXKTS3ZF0FKgeOmVyjCHWwfDDAwptBgIpb5HVNI
+    availability:
+      - RUNTIME
+
+  - variable: VAPID_SUBJECT
+    value: mailto:admin@mrckanteen.in
+    availability:
+      - RUNTIME
+
+  # Firebase Admin SDK service account key — required for Firestore/Auth admin operations.
+  # Set this via Firebase App Hosting secrets (NOT in this file — keep private keys out of git).
+  # Run: firebase apphosting:secrets:set FIREBASE_SERVICE_ACCOUNT_KEY
+  # Then reference it here as: secret: FIREBASE_SERVICE_ACCOUNT_KEY
+  # - variable: FIREBASE_SERVICE_ACCOUNT_KEY
+  #   secret: FIREBASE_SERVICE_ACCOUNT_KEY
+  #   availability:
+  #     - RUNTIME

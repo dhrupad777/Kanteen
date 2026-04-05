@@ -59,19 +59,19 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              // Firebase & Google services
-              "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com https://fcm.googleapis.com",
+              // Firebase & Google services + analytics
+              "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com https://fcm.googleapis.com https://www.google-analytics.com https://analytics.google.com https://region1.google-analytics.com",
               // Service worker
               "worker-src 'self'",
-              // Razorpay checkout + Firebase Auth popup iframe
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://apis.google.com",
+              // Razorpay checkout + Firebase Auth popup iframe + Google Tag Manager + Analytics
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://apis.google.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com",
               "frame-src https://api.razorpay.com https://checkout.razorpay.com https://*.firebaseapp.com https://accounts.google.com",
-              // Styles (Tailwind inline + Next.js)
-              "style-src 'self' 'unsafe-inline'",
+              // Styles (Tailwind inline + Next.js + Google Fonts)
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               // Images: Firebase Storage, Google profile pictures, placeholder
-              "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://lh3.googleusercontent.com https://placehold.co",
-              // Fonts
-              "font-src 'self'",
+              "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://lh3.googleusercontent.com https://placehold.co https://www.google-analytics.com",
+              // Fonts: local + Google Fonts CDN
+              "font-src 'self' https://fonts.gstatic.com",
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",

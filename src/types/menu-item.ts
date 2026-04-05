@@ -28,10 +28,12 @@ export type MenuCategory =
     | 'chinese'
     | 'sabji'
     | 'indian_rice'
+    | 'daily_regulars' // New category
     | 'daily_menu'; // virtual category for daily-menu orderable items (not in MENU_CATEGORIES grid)
 
 export const MENU_CATEGORIES: { value: MenuCategory; label: string }[] = [
     { value: 'daily_menu', label: 'Main Course' }, // Now a visible category tab
+    { value: 'daily_regulars', label: 'Extra Items' },
     { value: 'tea_beverage', label: 'Tea & Beverages' },
     { value: 'maggie', label: 'Maggie' },
     { value: 'sandwich', label: 'Sandwich' },
@@ -55,4 +57,6 @@ export interface CartItem {
     /** Per-item parcel surcharge copied from MenuItem at add-time */
     parcelCharge?: number;
     category: string;
+    /** Whether the student wants this non-daily-menu item packaged (+₹5/unit). daily_menu items are always packaged and ignore this flag. */
+    wantParcel?: boolean;
 }

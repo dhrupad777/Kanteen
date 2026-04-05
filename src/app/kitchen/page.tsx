@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { useAuth } from '@/hooks/use-auth';
 import { useStaffAuth } from '@/hooks/use-staff-auth';
-import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, EyeOff, LogOut, Bluetooth, Printer, AlertCircle, PrinterIcon, History, SkipForward } from 'lucide-react';
+import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, EyeOff, LogOut, Bluetooth, Printer, AlertCircle, PrinterIcon, History, SkipForward, RotateCcw } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,7 +62,7 @@ export default function KitchenPage() {
     }, [printer]);
 
     // ── Print Queue (for UI display + reconnect recovery only) ──────────────
-    const { jobs, failedJobs, completedJobs, completeJob, failJob, retryJob } = usePrintQueueRealtime({
+    const { jobs, failedJobs, completedJobs, completeJob, failJob, retryJob, recoverStaleJobs } = usePrintQueueRealtime({
         autoStart: true,
     });
     const jobsRef = useRef<any[]>([]);
@@ -74,6 +74,17 @@ export default function KitchenPage() {
     // Uses a local Set to prevent double-printing within this session.
     const processedJobsRef = useRef<Set<string>>(new Set());
 
+    // Marks a job complete in Firestore with one automatic retry on failure.
+    // Replaces silent .catch(() => {}) so jobs don't stay "pending" after printing.
+    const markPrinted = useCallback(async (jobId: string) => {
+        const ok = await completeJob(jobId);
+        if (!ok) {
+            setTimeout(() => completeJob(jobId).catch((e) => {
+                console.error('[Print] completeJob failed after retry:', jobId, e);
+            }), 2000);
+        }
+    }, [completeJob]);
+
     const processQueuedJob = useCallback(async (job: any) => {
         if (processedJobsRef.current.has(job.id)) return;
         if (!printerRef.current) return;
@@ -82,28 +93,70 @@ export default function KitchenPage() {
         const ok = await sendToBluetoothPrinterRef.current(receiptText);
         if (ok) {
             toast({ title: `Printed Token ${job.token}`, description: 'Recovered from queue' });
-            completeJob(job.id).catch(() => {}); // best-effort — 403 is silently swallowed
+            markPrinted(job.id);
         } else {
             processedJobsRef.current.delete(job.id); // allow retry
             failJob(job.id, 'Bluetooth send failed').catch(() => {});
         }
-    }, [toast, completeJob, failJob]);
+    }, [toast, markPrinted, failJob]);
 
-    // ── When printer connects: flush any pending queued jobs ─────────────────
+    // ── When printer connects: flush Firestore queue + unsent orders ──────────
     const prevPrinterRef = useRef<typeof printer>(null);
     useEffect(() => {
         if (printer && !prevPrinterRef.current) {
-            // Printer just became connected — process all currently queued jobs
+            // 0. Recover any jobs stuck in 'printing' from a previous session
+            recoverStaleJobs();
+
+            // 1. Flush Firestore queued jobs (cross-session recovery)
             jobsRef.current.forEach(job => processQueuedJob(job));
+
+            // 2. Flush orders that arrived while printer was disconnected (in-session queue)
+            const currentOrders = ordersRef.current;
+            const currentUnsent = new Set(unsentOrdersRef.current);
+            currentUnsent.forEach(orderId => {
+                const order = currentOrders.find(o => o.id === orderId);
+                if (!order || order.status !== 'Preparing') {
+                    unsentOrdersRef.current.delete(orderId);
+                    setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
+                    return;
+                }
+                const receiptText = generateReceiptDataRef.current(buildJob(order));
+                sendToBluetoothPrinterRef.current(receiptText).then(ok => {
+                    if (ok) {
+                        toast({ title: `Printed Token ${order.token}`, description: 'Queued receipt printed' });
+                        markPrinted(order.id);
+                        unsentOrdersRef.current.delete(orderId);
+                        setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
+                    }
+                });
+            });
         }
         prevPrinterRef.current = printer;
-    }, [printer, processQueuedJob]);
+    }, [printer, processQueuedJob, recoverStaleJobs, toast, markPrinted]);
 
-    // ── Auto-print: watch orders for new Preparing items (original approach) ─
-    // This is the primary trigger for auto-printing.
-    // No API dependency — generates receipt directly from order data and sends via BT.
-    const printedOrderIdsRef = useRef<Set<string>>(new Set());
+    // ── Auto-print: watch orders for new Preparing items ─────────────────────
+    // Primary trigger for auto-printing.
+    // When printer is disconnected, orders go into the "unsent" queue (visible in Print tab).
+    // When printer reconnects, the reconnect handler flushes unsent orders.
+    const printedOrderIdsRef = useRef<Set<string>>(new Set()); // "seen" — prevents loop
     const ordersInitializedRef = useRef(false);
+
+    // Unsent orders: arrived while printer was disconnected
+    const [unsentOrderIds, setUnsentOrderIds] = useState<Set<string>>(new Set());
+    const unsentOrdersRef = useRef<Set<string>>(new Set());
+    const ordersRef = useRef<typeof orders>([]);
+    useEffect(() => { ordersRef.current = orders; }, [orders]);
+
+    const buildJob = (order: typeof orders[number]) => ({
+        token: order.token,
+        items: order.items.map(i => ({ name: i.name, qty: i.quantity, quantity: i.quantity, price: i.price })),
+        customerName: order.userName,
+        isParcel: order.isParcel || false,
+        note: order.note,
+        totalPrice: order.totalPrice,
+        parcelCharge: (order as any).parcelCharge || 0,
+        platformCharges: (order as any).platformCharges || 0,
+    });
 
     useEffect(() => {
         if (ordersLoading) return;
@@ -113,33 +166,41 @@ export default function KitchenPage() {
         if (!ordersInitializedRef.current) {
             ordersInitializedRef.current = true;
             preparingOrders.forEach(o => printedOrderIdsRef.current.add(o.id));
-            return; // Don't print orders that were already there on load
+            return; // Don't re-print orders already there on page load
         }
         const newOrders = preparingOrders.filter(
             o => !printedOrderIdsRef.current.has(o.id)
         );
         if (newOrders.length === 0) return;
+
+        // Mark seen to prevent this effect from re-triggering for the same orders
         newOrders.forEach(o => printedOrderIdsRef.current.add(o.id));
-        if (!autoPrintRef.current || !printerRef.current) return;
+
+        if (!autoPrintRef.current || !printerRef.current) {
+            // Printer not ready — add to unsent queue for when it connects
+            newOrders.forEach(o => {
+                if (!unsentOrdersRef.current.has(o.id)) {
+                    unsentOrdersRef.current.add(o.id);
+                    setUnsentOrderIds(prev => new Set([...prev, o.id]));
+                }
+            });
+            return;
+        }
+
+        // Printer ready — print immediately
         newOrders.forEach(async (order) => {
-            const job = {
-                token: order.token,
-                items: order.items.map(i => ({ name: i.name, qty: i.quantity, quantity: i.quantity, price: i.price })),
-                customerName: order.userName,
-                isParcel: order.isParcel || false,
-                note: order.note,
-                totalPrice: order.totalPrice,
-                platformCharges: order.platformCharges || 0,
-            };
-            const receiptText = generateReceiptDataRef.current(job);
+            const receiptText = generateReceiptDataRef.current(buildJob(order));
             const ok = await sendToBluetoothPrinterRef.current(receiptText);
             if (ok) {
                 toast({ title: `Printed Token ${order.token}`, description: order.userName ? `Order for ${order.userName}` : 'Sent to printer' });
-                // Mark the Firestore print job as completed (best-effort)
-                completeJob(order.id).catch(() => {});
+                markPrinted(order.id);
+                unsentOrdersRef.current.delete(order.id);
+                setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(order.id); return s; });
+            } else {
+                printedOrderIdsRef.current.delete(order.id); // allow retry
             }
         });
-    }, [orders, ordersLoading, toast, completeJob]);
+    }, [orders, ordersLoading, toast, markPrinted]);
 
     // ── Online orders only (Razorpay-paid, token 201–999) ───────────────────
     const onlineOrders = orders.filter(o =>
@@ -316,11 +377,15 @@ export default function KitchenPage() {
                         <TabsTrigger value="Printer" className="relative py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm flex gap-1 items-center">
                             <Printer className={cn("w-3.5 h-3.5", printer ? "text-emerald-500" : "text-muted-foreground")} />
                             <span className="text-[11px] sm:text-xs md:text-sm font-black uppercase hidden sm:block">Print</span>
-                            {(jobs.length > 0 || failedJobs.length > 0) && (
-                                <Badge className="ml-1 px-1.5 py-0 min-w-[1.25rem] h-5 flex items-center justify-center bg-amber-500 hover:bg-amber-600 text-[10px] font-black border-none ring-2 ring-white shadow-sm">
-                                    {jobs.length + failedJobs.length}
-                                </Badge>
-                            )}
+                            {(() => {
+                                const unsentSet = new Set(orders.filter(o => unsentOrderIds.has(o.id) && o.status === 'Preparing').map(o => o.id));
+                                const total = unsentSet.size + [...jobs, ...failedJobs].filter(j => !unsentSet.has(j.orderId)).length;
+                                return total > 0 ? (
+                                    <Badge className="ml-1 px-1.5 py-0 min-w-[1.25rem] h-5 flex items-center justify-center bg-amber-500 hover:bg-amber-600 text-[10px] font-black border-none ring-2 ring-white shadow-sm">
+                                        {total}
+                                    </Badge>
+                                ) : null;
+                            })()}
                         </TabsTrigger>
                     </TabsList>
 
@@ -452,8 +517,8 @@ export default function KitchenPage() {
 
                                     {/* Actions */}
                                     <div className="flex gap-2 flex-wrap">
-                                        {/* Print All Pending — processes all queued/failed jobs without API auth */}
-                                        {(jobs.length > 0 || failedJobs.length > 0) && (
+                                        {/* Print All Pending */}
+                                        {(jobs.length > 0 || failedJobs.length > 0 || unsentOrderIds.size > 0) && printer && (
                                             <Button
                                                 variant="outline"
                                                 className="flex-1 font-bold border-amber-200 text-amber-700 hover:bg-amber-50"
@@ -462,21 +527,37 @@ export default function KitchenPage() {
                                                         toast({ title: 'Connect printer first', variant: 'destructive' });
                                                         return;
                                                     }
-                                                    // Reset processedJobsRef so we re-attempt all queued jobs
+                                                    // Print unsent orders (printer was disconnected)
+                                                    const currentOrders = ordersRef.current;
+                                                    const unsentCopy = new Set(unsentOrdersRef.current);
+                                                    for (const orderId of unsentCopy) {
+                                                        const order = currentOrders.find(o => o.id === orderId);
+                                                        if (!order || order.status !== 'Preparing') {
+                                                            unsentOrdersRef.current.delete(orderId);
+                                                            setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
+                                                            continue;
+                                                        }
+                                                        const receiptText = generateReceiptDataRef.current(buildJob(order));
+                                                        const ok = await sendToBluetoothPrinterRef.current(receiptText);
+                                                        if (ok) {
+                                                            completeJob(order.id).catch(() => {});
+                                                            unsentOrdersRef.current.delete(orderId);
+                                                            setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
+                                                        }
+                                                    }
+                                                    // Print Firestore queued/failed jobs
                                                     processedJobsRef.current = new Set();
-                                                    let count = 0;
                                                     for (const job of jobsRef.current) {
                                                         await processQueuedJob(job);
-                                                        count++;
                                                     }
                                                     for (const job of failedJobsRef.current) {
                                                         await retryJob(job.id).catch(() => {});
                                                     }
-                                                    toast({ title: `Sent ${count} job${count !== 1 ? 's' : ''} to printer` });
+                                                    toast({ title: 'Print All sent to printer' });
                                                 }}
                                             >
                                                 <PrinterIcon className="h-4 w-4 mr-2" />
-                                                Print All Pending ({jobs.length + failedJobs.length})
+                                                Print All Pending ({jobs.length + failedJobs.length + unsentOrderIds.size})
                                             </Button>
                                         )}
 
@@ -509,61 +590,148 @@ export default function KitchenPage() {
                                 </div>
                             </div>
 
-                            {/* Pending / Failed jobs */}
-                            {(jobs.length > 0 || failedJobs.length > 0) && (
-                                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                                    <div className="p-5 border-b border-slate-100">
-                                        <h3 className="font-black text-base">Pending Queue</h3>
-                                        <p className="text-xs text-muted-foreground mt-0.5">
-                                            {jobs.length} queued · {failedJobs.length} failed
-                                        </p>
-                                    </div>
-                                    <div className="divide-y divide-slate-100">
-                                        {[...jobs, ...failedJobs].map(job => (
-                                            <div key={job.id} className="flex items-center justify-between px-5 py-3 gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-black text-primary text-base">#{job.token}</span>
-                                                        {job.customerName && (
-                                                            <span className="text-xs text-muted-foreground truncate">{job.customerName.split(' ')[0]}</span>
-                                                        )}
-                                                        <Badge
-                                                            variant="secondary"
-                                                            className={cn(
-                                                                "text-[10px] font-black uppercase shrink-0",
-                                                                job.status === 'failed' || job.status === 'dead_letter'
-                                                                    ? "bg-red-100 text-red-700"
-                                                                    : "bg-amber-100 text-amber-700"
-                                                            )}
-                                                        >
-                                                            {job.status === 'dead_letter' ? 'dead' : job.status}
-                                                        </Badge>
-                                                    </div>
-                                                    <p className="text-xs text-muted-foreground mt-0.5">
-                                                        {job.items.length} item{job.items.length !== 1 ? 's' : ''} · {formatDistanceToNow(job.createdAt)} ago
-                                                    </p>
-                                                    {job.error && <p className="text-[10px] text-red-500 mt-0.5 truncate">{job.error}</p>}
-                                                </div>
-                                                {/* Skip — mark done without printing (useful for test orders) */}
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                                                    title="Skip — mark as done without printing"
-                                                    onClick={async () => {
-                                                        await completeJob(job.id).catch(() => {});
-                                                        processedJobsRef.current.add(job.id);
-                                                        toast({ title: `Token ${job.token} skipped`, description: 'Marked as done without printing' });
-                                                    }}
-                                                >
-                                                    <SkipForward className="w-3.5 h-3.5 mr-1" />
-                                                    Skip
-                                                </Button>
+                                {/* ── Unified Pending Print Queue ─────────────────────── */}
+                            {(() => {
+                                // Build one deduplicated list: unsent orders (in-session) + Firestore
+                                // jobs whose orderId isn't already covered by an unsent order.
+                                const unsentOrders = orders.filter(
+                                    o => unsentOrderIds.has(o.id) && o.status === 'Preparing'
+                                );
+                                const unsentOrderIdSet = new Set(unsentOrders.map(o => o.id));
+                                const firestoreOnly = [...jobs, ...failedJobs].filter(
+                                    j => !unsentOrderIdSet.has(j.orderId)
+                                );
+                                const totalPending = unsentOrders.length + firestoreOnly.length;
+                                if (totalPending === 0) return null;
+                                return (
+                                    <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+                                        <div className="p-5 border-b border-amber-100 flex items-center gap-2">
+                                            <PrinterIcon className="w-4 h-4 text-amber-600" />
+                                            <div className="flex-1">
+                                                <h3 className="font-black text-base">Pending Print Queue</h3>
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    {totalPending} receipt{totalPending !== 1 ? 's' : ''} waiting to print
+                                                </p>
                                             </div>
-                                        ))}
+                                        </div>
+                                        <div className="divide-y divide-slate-100">
+                                            {/* In-session unsent orders */}
+                                            {unsentOrders.map(order => (
+                                                <div key={order.id} className="flex items-center justify-between px-5 py-3 gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-black text-primary text-base">#{order.token}</span>
+                                                            {order.userName && (
+                                                                <span className="text-xs text-muted-foreground truncate">{order.userName.split(' ')[0]}</span>
+                                                            )}
+                                                            <Badge variant="secondary" className="text-[10px] font-black uppercase shrink-0 bg-amber-100 text-amber-700">
+                                                                waiting
+                                                            </Badge>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                                            {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex gap-1.5 shrink-0">
+                                                        {printer && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="h-8 text-xs font-bold border-primary/30 text-primary hover:bg-primary/5"
+                                                                onClick={async () => {
+                                                                    const receiptText = generateReceiptData(buildJob(order));
+                                                                    const ok = await sendToBluetoothPrinter(receiptText);
+                                                                    if (ok) {
+                                                                        toast({ title: `Printed Token ${order.token}` });
+                                                                        completeJob(order.id).catch(() => {});
+                                                                        unsentOrdersRef.current.delete(order.id);
+                                                                        setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(order.id); return s; });
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <PrinterIcon className="w-3.5 h-3.5 mr-1" />
+                                                                Print
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                                                            title="Skip — mark as done without printing"
+                                                            onClick={() => {
+                                                                unsentOrdersRef.current.delete(order.id);
+                                                                setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(order.id); return s; });
+                                                                completeJob(order.id).catch(() => {});
+                                                                toast({ title: `Token ${order.token} skipped`, description: 'Marked as done without printing' });
+                                                            }}
+                                                        >
+                                                            <SkipForward className="w-3.5 h-3.5 mr-1" />
+                                                            Skip
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {/* Firestore jobs not already shown above */}
+                                            {firestoreOnly.map(job => (
+                                                <div key={job.id} className="flex items-center justify-between px-5 py-3 gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-black text-primary text-base">#{job.token}</span>
+                                                            {job.customerName && (
+                                                                <span className="text-xs text-muted-foreground truncate">{job.customerName.split(' ')[0]}</span>
+                                                            )}
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className={cn(
+                                                                    "text-[10px] font-black uppercase shrink-0",
+                                                                    job.status === 'failed' || job.status === 'dead_letter'
+                                                                        ? "bg-red-100 text-red-700"
+                                                                        : "bg-amber-100 text-amber-700"
+                                                                )}
+                                                            >
+                                                                {job.status === 'dead_letter' ? 'dead' : job.status}
+                                                            </Badge>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                                            {job.items.length} item{job.items.length !== 1 ? 's' : ''} · {formatDistanceToNow(job.createdAt)} ago
+                                                        </p>
+                                                        {job.error && <p className="text-[10px] text-red-500 mt-0.5 truncate">{job.error}</p>}
+                                                    </div>
+                                                    <div className="flex gap-1.5 shrink-0">
+                                                        {printer && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="h-8 text-xs font-bold border-primary/30 text-primary hover:bg-primary/5"
+                                                                onClick={async () => {
+                                                                    await processQueuedJob(job);
+                                                                }}
+                                                            >
+                                                                <PrinterIcon className="w-3.5 h-3.5 mr-1" />
+                                                                Print
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                                                            title="Skip — mark as done without printing"
+                                                            onClick={async () => {
+                                                                await completeJob(job.id).catch(() => {});
+                                                                processedJobsRef.current.add(job.id);
+                                                                toast({ title: `Token ${job.token} skipped`, description: 'Marked as done without printing' });
+                                                            }}
+                                                        >
+                                                            <SkipForward className="w-3.5 h-3.5 mr-1" />
+                                                            Skip
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             {/* Recent Receipts */}
                             {completedJobs.length > 0 && (
@@ -722,6 +890,19 @@ function OrderCard({
                                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black h-12 rounded-xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-transform"
                                 >
                                     <Key className="w-4 h-4 mr-2" />FINISH PICKUP
+                                </Button>
+                            )}
+                            {/* Revert — shown only when not in OTP entry mode */}
+                            {verifyingOtp !== order.id && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => onStatusUpdate(order.id, 'Preparing')}
+                                    disabled={loadingOrders.has(order.id)}
+                                    className="w-full text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                                >
+                                    <RotateCcw className="w-3 h-3 mr-1.5" />
+                                    Revert to Preparing
                                 </Button>
                             )}
                         </div>

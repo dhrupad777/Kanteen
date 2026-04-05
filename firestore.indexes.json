@@ -57,6 +57,20 @@
             ]
         },
         {
+            "collectionGroup": "menu_items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isActive",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortOrder",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "collectionGroup": "print_jobs",
             "queryScope": "COLLECTION",
             "fields": [

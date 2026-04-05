@@ -37,7 +37,7 @@ export function CategoryDialog({ category, label, items, icon: Icon, image }: Ca
                     >
                         {/* Left Side: Big Label */}
                         <div className="flex-1 pr-2 sm:pr-4 z-10 min-w-0">
-                            <h3 className="text-base sm:text-xl md:text-2xl font-bold text-gray-900 leading-tight group-hover:text-primary transition-colors truncate">
+                            <h3 className="text-base sm:text-xl md:text-2xl font-bold text-gray-900 leading-tight group-hover:text-primary transition-colors line-clamp-2">
                                 {label}
                             </h3>
                             {category === 'daily_menu' && (

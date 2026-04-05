@@ -73,16 +73,25 @@ export function Receipt({ job, showPrintButton = false, onPrint }: ReceiptProps)
                                 <tr key={index} className="align-top">
                                     <td className="pr-2 font-bold w-6">{item.quantity}x</td>
                                     <td className="text-left leading-tight">{item.name}</td>
+                                    <td className="text-right whitespace-nowrap pl-2">Rs.{(item.price * item.quantity).toFixed(0)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
 
+                <div className="border-t border-dashed border-black my-1"></div>
+                <div className="flex justify-between font-bold text-sm">
+                    <span>TOTAL</span>
+                    <span>Rs.{job.totalPrice.toFixed(2)}</span>
+                </div>
+
                 {job.note && (
                     <>
                         <div className="border-t border-dashed border-black my-2"></div>
-                        <div className="font-bold text-sm">NOTE: {job.note}</div>
+                        <div className="font-bold text-sm">
+                            NOTE: {job.note.split(' ').slice(0, 30).join(' ')}{job.note.split(' ').length > 30 ? '…' : ''}
+                        </div>
                     </>
                 )}
 
@@ -172,14 +181,14 @@ export function generateReceiptText(job: PrintJob): string {
     job.items.forEach(item => {
         const name = item.name.length > 20 ? item.name.slice(0, 17) + '...' : item.name.padEnd(20);
         const qty = String(item.quantity).padStart(3);
-        const price = `₹${item.price.toFixed(0)}`.padStart(7);
+        const price = `Rs.${item.price.toFixed(0)}`.padStart(7);
         lines.push(`${name} ${qty} ${price}`);
     });
 
     lines.push(line('='));
 
     // Total
-    lines.push(leftRight('TOTAL:', `₹${job.totalPrice.toFixed(2)}`));
+    lines.push(leftRight('TOTAL:', `Rs.${job.totalPrice.toFixed(2)}`));
     lines.push(line('='));
     lines.push('');
 

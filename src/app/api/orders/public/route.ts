@@ -32,7 +32,7 @@ export async function GET() {
                     status: data.status,
                     token: data.token,
                     totalPrice: data.totalPrice,
-                    createdAt: data.createdAt?.toDate()?.toISOString() || new Date().toISOString(),
+                    createdAt: data.createdAt?.toDate()?.toISOString() ?? null,
                     dateKey: data.dateKey,
                     kitchen: data.kitchen,
                 };
@@ -46,7 +46,7 @@ export async function GET() {
                     status: data.status,
                     token: data.token,
                     totalPrice: data.totalPrice,
-                    createdAt: data.createdAt?.toDate()?.toISOString() || new Date().toISOString(),
+                    createdAt: data.createdAt?.toDate()?.toISOString() ?? null,
                     dateKey: data.dateKey,
                     kitchen: data.kitchen,
                 };
@@ -55,10 +55,7 @@ export async function GET() {
 
         return NextResponse.json({ orders });
     } catch (error: any) {
-        console.error('Error fetching public orders:', error?.message || error, error?.code);
-        return NextResponse.json(
-            { error: 'Failed to fetch orders', details: error?.message || 'Unknown error' },
-            { status: 500 }
-        );
+        console.error('Error fetching public orders:', error instanceof Error ? error.message : 'Unknown error');
+        return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 }

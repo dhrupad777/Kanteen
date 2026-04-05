@@ -5,7 +5,9 @@ import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff, Bell, Smartphone } from 'lucide-react';
+import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff, Bell, Smartphone, Share, Download, Wrench } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import Link from "next/link";
@@ -15,7 +17,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { useOrderReadyAlert, playOrderChime } from '@/hooks/use-order-ready-alert';
 import { useInstallPrompt } from '@/hooks/use-install-prompt';
-import { PwaInstallBanner } from '@/components/pwa-install-banner';
 
 export default function StudentDashboardPage() {
   const { orders, loading: ordersLoading } = useOrders();
@@ -34,6 +35,17 @@ export default function StudentDashboardPage() {
     return () => navigator.serviceWorker.removeEventListener('message', handler);
   }, []);
 
+  // Maintenance mode — controlled from /counter toggle
+  const [orderingEnabled, setOrderingEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'canteen_state', 'settings'),
+      (snap) => setOrderingEnabled(snap.exists() ? snap.data().studentOrderingEnabled !== false : true),
+      () => setOrderingEnabled(true), // on error, default open
+    );
+    return () => unsub();
+  }, []);
+
   const { supported, permission, subscribed, iosNeedsInstall, subscribe, unsubscribe, loading: pushLoading } = usePushNotifications();
   const { isInstallable, isInstalled, installApp } = useInstallPrompt();
 
@@ -47,18 +59,10 @@ export default function StudentDashboardPage() {
     }
   }, [user, subscribed, subscribe, unsubscribe]);
 
-  // Notification prompt dialog
+  // Combined engagement prompt (notifications + install) — shown after first order confirmation
   const NOTIF_SNOOZE_KEY = 'kanteen_notif_prompt_snoozed';
   const [showNotifPrompt, setShowNotifPrompt] = useState(false);
-
-  useEffect(() => {
-    if (!user || !supported || subscribed || permission !== 'default') return;
-    const snoozed = localStorage.getItem(NOTIF_SNOOZE_KEY);
-    if (snoozed && Date.now() < Number(snoozed)) return;
-    // Show prompt 1.5s after page loads — feels natural, not jarring
-    const t = setTimeout(() => setShowNotifPrompt(true), 1500);
-    return () => clearTimeout(t);
-  }, [user, supported, subscribed, permission]);
+  const [installing, setInstalling] = useState(false);
 
   const handleEnableNotifications = useCallback(async () => {
     setShowNotifPrompt(false);
@@ -68,21 +72,40 @@ export default function StudentDashboardPage() {
   }, [user, subscribe]);
 
   const handleSnoozeNotifications = useCallback(() => {
-    // Snooze for 7 days
     localStorage.setItem(NOTIF_SNOOZE_KEY, String(Date.now() + 7 * 24 * 60 * 60 * 1000));
     setShowNotifPrompt(false);
   }, []);
+
+  const handleInstallApp = useCallback(async () => {
+    setInstalling(true);
+    await installApp();
+    setInstalling(false);
+    setShowNotifPrompt(false);
+  }, [installApp]);
+
+  // Only fire if something useful to show
+  const triggerEngagementPrompt = useCallback(() => {
+    const needsNotif = supported && !subscribed && permission !== 'denied';
+    const needsInstall = !isInstalled && (isInstallable || iosNeedsInstall);
+    if (!needsNotif && !needsInstall) return;
+    const snoozed = localStorage.getItem(NOTIF_SNOOZE_KEY);
+    if (snoozed && Date.now() < Number(snoozed)) return;
+    setTimeout(() => setShowNotifPrompt(true), 700);
+  }, [supported, subscribed, permission, isInstalled, isInstallable, iosNeedsInstall]);
 
   // Order confirmation popup state
   const [orderConfirmed, setOrderConfirmed] = useState<{ token: number; orderId: string } | null>(null);
   const SUPPRESS_KEY = 'kanteen_suppress_order_popup';
 
-  const dismissPopup = () => setOrderConfirmed(null);
+  const dismissPopup = useCallback(() => {
+    setOrderConfirmed(null);
+    triggerEngagementPrompt();
+  }, [triggerEngagementPrompt]);
 
-  const dismissAndSuppress = () => {
+  const dismissAndSuppress = useCallback(() => {
     localStorage.setItem(SUPPRESS_KEY, '1');
     setOrderConfirmed(null);
-  };
+  }, []);
 
   // Auth check removed - dashboard is public
 
@@ -97,13 +120,18 @@ export default function StudentDashboardPage() {
       if (localStorage.getItem(SUPPRESS_KEY) === '1') return;
       try {
         setOrderConfirmed(JSON.parse(data));
-        // Auto-dismiss after 8 seconds
-        const timer = setTimeout(() => setOrderConfirmed(null), 8000);
+        // Auto-dismiss after 8 seconds, then show engagement prompt
+        const timer = setTimeout(() => {
+          setOrderConfirmed(null);
+          triggerEngagementPrompt();
+        }, 8000);
         return () => clearTimeout(timer);
       } catch (e) {
         // malformed data — silently discard
       }
     }
+  // triggerEngagementPrompt intentionally omitted — stable enough, avoids re-running on every render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Memoize filtered orders to prevent unnecessary recalculations
@@ -111,7 +139,7 @@ export default function StudentDashboardPage() {
     orders.filter(o =>
       o.studentId === user?.uid &&
       ['Preparing', 'Ready'].includes(o.status)
-    ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+    ).sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)),
     [orders, user?.uid]
   );
 
@@ -120,7 +148,7 @@ export default function StudentDashboardPage() {
     orders.filter(o =>
       o.status === 'Preparing' &&
       (!o.token || o.token < 201) // Offline tokens (1-200) or no token
-    ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+    ).sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)),
     [orders]
   );
 
@@ -129,13 +157,17 @@ export default function StudentDashboardPage() {
     orders.filter(o =>
       o.status === 'Ready' &&
       (!o.token || o.token < 201) // Offline tokens (1-200) or no token
-    ).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+    ).sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)),
     [orders]
   );
 
-  if (loading) {
+  if (loading || orderingEnabled === null) {
     return <StudentDashboardSkeleton />;
   }
+
+  // NOTE: Do NOT block /student when orderingEnabled === false.
+  // Students who already placed orders must always be able to see their token and OTP.
+  // Only new orders are blocked — the "Order Online" CTA is hidden below instead.
 
   return (
     <div className="space-y-6">
@@ -226,7 +258,7 @@ export default function StudentDashboardPage() {
         )}
       </AnimatePresence>
 
-      {/* Notification prompt dialog */}
+      {/* Combined engagement prompt — shown after order confirmation */}
       <AnimatePresence>
         {showNotifPrompt && (
           <motion.div
@@ -241,7 +273,7 @@ export default function StudentDashboardPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 30, scale: 0.96 }}
               transition={{ type: 'spring', stiffness: 340, damping: 28 }}
-              className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden"
+              className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Orange top stripe */}
@@ -251,59 +283,81 @@ export default function StudentDashboardPage() {
                 {/* Close */}
                 <button
                   onClick={handleSnoozeNotifications}
-                  className="absolute top-3 right-3 p-1.5 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                  className="absolute top-3 right-3 p-1.5 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
 
                 {/* Icon */}
-                <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-2xl flex items-center justify-center mb-4">
+                <div className="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center mb-4">
                   <Bell className="w-6 h-6 text-orange-500" />
                 </div>
 
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                  Know the moment it&apos;s ready
+                <h2 className="text-lg font-bold text-gray-900 mb-1">
+                  Know when your order is ready
                 </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-                  Get notified the second your order is ready for pickup — even if you close this tab.
+                <p className="text-sm text-gray-500 mb-5">
+                  Get notified the moment your food is ready for pickup — no need to keep checking.
                 </p>
 
-                {/* Platform instructions */}
+                {/* Platform-specific instructions */}
                 <div className="space-y-2 mb-5">
-                  {!iosNeedsInstall ? (
-                    // Android / Desktop — just tap allow
-                    <div className="flex items-start gap-3 bg-gray-50 dark:bg-zinc-800 rounded-2xl px-3.5 py-3">
-                      <Smartphone className="w-4 h-4 text-orange-400 mt-0.5 shrink-0" />
-                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
-                        Tap <span className="font-semibold text-gray-800 dark:text-white">Enable below</span> and hit <span className="font-semibold text-gray-800 dark:text-white">Allow</span> when your browser asks.
-                      </p>
-                    </div>
-                  ) : (
-                    // iOS Safari — needs PWA first
+                  {iosNeedsInstall ? (
+                    // iOS Safari — must add to home screen before notifications work
                     <>
-                      <div className="flex items-start gap-3 bg-gray-50 dark:bg-zinc-800 rounded-2xl px-3.5 py-3">
-                        <span className="text-base leading-none mt-0.5">📱</span>
-                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
-                          <span className="font-semibold text-gray-800 dark:text-white">iOS step 1 —</span> Tap the Share button in Safari, then <span className="font-semibold text-gray-800 dark:text-white">Add to Home Screen</span>.
+                      <div className="rounded-2xl bg-amber-50 border border-amber-100 px-3.5 py-3 mb-1">
+                        <p className="text-xs font-semibold text-amber-700 mb-0.5">iPhone / iPad</p>
+                        <p className="text-xs text-amber-700 leading-snug">
+                          To receive notifications on iOS, you must first add Kanteen to your Home Screen.
                         </p>
                       </div>
-                      <div className="flex items-start gap-3 bg-gray-50 dark:bg-zinc-800 rounded-2xl px-3.5 py-3">
-                        <span className="text-base leading-none mt-0.5">🔔</span>
-                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
-                          <span className="font-semibold text-gray-800 dark:text-white">iOS step 2 —</span> Open Kanteen from your Home Screen, then tap <span className="font-semibold text-gray-800 dark:text-white">Enable</span> below.
+                      <div className="flex items-start gap-3 bg-gray-50 rounded-2xl px-3.5 py-3">
+                        <Share className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                        <p className="text-xs text-gray-600 leading-snug">
+                          <span className="font-semibold text-gray-800">Step 1 —</span> Tap the <span className="font-semibold text-gray-800">Share</span> button in Safari, then tap <span className="font-semibold text-gray-800">Add to Home Screen</span>.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-3 bg-gray-50 rounded-2xl px-3.5 py-3">
+                        <Bell className="w-4 h-4 text-orange-400 mt-0.5 shrink-0" />
+                        <p className="text-xs text-gray-600 leading-snug">
+                          <span className="font-semibold text-gray-800">Step 2 —</span> Open Kanteen from your Home Screen and tap <span className="font-semibold text-gray-800">Enable Notifications</span> below.
                         </p>
                       </div>
                     </>
-                  )}
-                  {/* Android battery optimization tip */}
-                  {!iosNeedsInstall && (
-                    <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl px-3.5 py-3">
-                      <span className="text-base leading-none mt-0.5">⚡</span>
-                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
-                        <span className="font-semibold text-gray-800 dark:text-white">On Android —</span>{' '}
-                        Allow Chrome <span className="font-semibold">No restrictions</span> in battery settings so notifications reach you in the background.
-                      </p>
-                    </div>
+                  ) : (
+                    // Android / Desktop
+                    <>
+                      <div className="flex items-start gap-3 bg-gray-50 rounded-2xl px-3.5 py-3">
+                        <Smartphone className="w-4 h-4 text-orange-400 mt-0.5 shrink-0" />
+                        <p className="text-xs text-gray-600 leading-snug">
+                          Tap <span className="font-semibold text-gray-800">Enable Notifications</span> below and hit <span className="font-semibold text-gray-800">Allow</span> when your browser asks.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-3 bg-amber-50 rounded-2xl px-3.5 py-3">
+                        <span className="text-sm leading-none mt-0.5 shrink-0">⚡</span>
+                        <p className="text-xs text-gray-600 leading-snug">
+                          <span className="font-semibold text-gray-800">On Android —</span> Allow Chrome <span className="font-semibold">No restrictions</span> in battery settings so alerts reach you in the background.
+                        </p>
+                      </div>
+                      {/* Install option if available */}
+                      {!isInstalled && isInstallable && (
+                        <div className="flex items-center justify-between gap-3 bg-gray-50 rounded-2xl px-3.5 py-3">
+                          <div className="flex items-start gap-3">
+                            <Download className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                            <p className="text-xs text-gray-600 leading-snug">
+                              <span className="font-semibold text-gray-800">Add to Home Screen</span> for instant one-tap access.
+                            </p>
+                          </div>
+                          <button
+                            onClick={handleInstallApp}
+                            disabled={installing}
+                            className="shrink-0 text-xs font-semibold text-orange-500 hover:text-orange-600 disabled:opacity-50 transition-colors"
+                          >
+                            {installing ? 'Installing…' : 'Install'}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -314,11 +368,11 @@ export default function StudentDashboardPage() {
                     disabled={pushLoading || iosNeedsInstall}
                     className="w-full py-3 rounded-2xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 active:scale-[0.98] text-white font-semibold text-sm transition-all"
                   >
-                    {iosNeedsInstall ? 'Add to Home Screen first ↑' : 'Enable Notifications'}
+                    {iosNeedsInstall ? 'Add to Home Screen first' : 'Enable Notifications'}
                   </button>
                   <button
                     onClick={handleSnoozeNotifications}
-                    className="w-full py-2.5 rounded-2xl text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-zinc-800 active:scale-[0.98] text-xs font-medium transition-all"
+                    className="w-full py-2.5 rounded-2xl text-gray-400 hover:text-gray-600 hover:bg-gray-50 active:scale-[0.98] text-xs font-medium transition-all"
                   >
                     Not now
                   </button>
@@ -384,29 +438,33 @@ export default function StudentDashboardPage() {
         />
       )}
 
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-0.5">
-          Daily Menu
-        </span>
-        <span className="text-[10px] text-muted-foreground font-medium">Today&apos;s canteen items</span>
-      </div>
-
       <MenuDisplay />
 
-      <Link href="/order" className="block w-full group">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400 via-orange-500 to-red-600 shadow-lg shadow-orange-500/25 transition-transform duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]">
-          {/* Decorative blobs */}
-          <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/10 rounded-full blur-xl pointer-events-none" />
-          <div className="absolute -bottom-6 -left-4 w-32 h-32 bg-orange-300/20 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-          <div className="relative flex flex-col items-center justify-center text-center px-6 py-6 gap-1">
-            <span className="text-white/80 text-[10px] font-black uppercase tracking-[0.25em]">Tap to browse menu</span>
-            <span className="text-white font-black text-2xl tracking-tight leading-tight">Order Online</span>
-            <span className="text-orange-100 text-xs font-medium opacity-80 mt-0.5">Order. Arrive. Eat.</span>
+      {orderingEnabled === false ? (
+        /* Maintenance — show a quiet notice instead of the order CTA */
+        <div className="rounded-2xl border border-orange-100 bg-orange-50 px-5 py-4 flex items-center gap-3">
+          <Wrench className="h-5 w-5 text-orange-400 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-orange-800">Online ordering is paused</p>
+            <p className="text-xs text-orange-600 mt-0.5">We are adding some new features, see you soon — Kanteen</p>
           </div>
         </div>
-      </Link>
+      ) : (
+        <Link href="/order" className="block w-full group">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400 via-orange-500 to-red-600 shadow-lg shadow-orange-500/25 transition-transform duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]">
+            {/* Decorative blobs */}
+            <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/10 rounded-full blur-xl pointer-events-none" />
+            <div className="absolute -bottom-6 -left-4 w-32 h-32 bg-orange-300/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+            <div className="relative flex flex-col items-center justify-center text-center px-6 py-6 gap-1">
+              <span className="text-white/80 text-[10px] font-black uppercase tracking-[0.25em]">Tap to browse menu</span>
+              <span className="text-white font-black text-2xl tracking-tight leading-tight">Order Online</span>
+              <span className="text-orange-100 text-xs font-medium opacity-80 mt-0.5">Order. Arrive. Eat.</span>
+            </div>
+          </div>
+        </Link>
+      )}
 
       {publicPreparingOrders.length > 0 && (
         <DashboardSection
@@ -441,13 +499,6 @@ export default function StudentDashboardPage() {
         </Card>
       )}
 
-      {/* PWA install banner — slides up from bottom after 4s, snoozeable 14 days */}
-      <PwaInstallBanner
-        isInstallable={isInstallable}
-        isInstalled={isInstalled}
-        iosNeedsInstall={iosNeedsInstall}
-        installApp={installApp}
-      />
     </div>
   );
 }

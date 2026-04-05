@@ -7,7 +7,7 @@
  */
 
 import { getAdminDb } from './firebase-admin';
-import { FieldValue, Transaction } from 'firebase-admin/firestore';
+import { FieldValue, Transaction, WriteBatch } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 
 export type PrintJobStatus = 'queued' | 'printing' | 'completed' | 'failed' | 'dead_letter';
@@ -16,6 +16,8 @@ export interface PrintJobPayload {
     orderId: string;
     token: number;
     items: Array<{ name: string; qty: number }>;
+    totalPrice: number;
+    parcelCharge: number;
     studentName?: string;
     studentEmail?: string;
     note?: string;
@@ -211,33 +213,32 @@ export async function recoverStaleJobs(staleThresholdMs: number = 120_000): Prom
         .where('status', '==', 'printing')
         .get();
 
-    let recoveredCount = 0;
-
-    for (const doc of snapshot.docs) {
+    const staleJobs = snapshot.docs.filter((doc) => {
         const data = doc.data();
-        const lastAttempt = data.lastAttemptAt?.toDate?.() || data.createdAt?.toDate?.();
+        const lastAttempt = data.lastAttemptAt?.toDate?.() ?? data.createdAt?.toDate?.();
+        return !lastAttempt || lastAttempt < cutoff;
+    });
 
-        // If no timestamp or timestamp is before cutoff, it's stale
-        if (!lastAttempt || lastAttempt < cutoff) {
-            const attempts = (data.attempts || 0);
-            const maxAttempts = data.maxAttempts || 5;
+    if (staleJobs.length === 0) return 0;
 
-            // If under max attempts, re-queue. Otherwise dead-letter it.
-            const newStatus: PrintJobStatus = attempts >= maxAttempts ? 'dead_letter' : 'queued';
-
-            await doc.ref.update({
-                status: newStatus,
-                error: newStatus === 'dead_letter'
-                    ? 'Exceeded max attempts after stale recovery'
-                    : `Recovered from stale 'printing' state`,
-                printerId: FieldValue.delete(),
-            });
-
-            recoveredCount++;
-        }
+    // Commit all recoveries atomically — partial recovery is worse than no recovery
+    const batch: WriteBatch = db.batch();
+    for (const doc of staleJobs) {
+        const data = doc.data();
+        const attempts = data.attempts || 0;
+        const maxAttempts = data.maxAttempts || 5;
+        const newStatus: PrintJobStatus = attempts >= maxAttempts ? 'dead_letter' : 'queued';
+        batch.update(doc.ref, {
+            status: newStatus,
+            error: newStatus === 'dead_letter'
+                ? 'Exceeded max attempts after stale recovery'
+                : "Recovered from stale 'printing' state",
+            printerId: FieldValue.delete(),
+        });
     }
+    await batch.commit();
 
-    return recoveredCount;
+    return staleJobs.length;
 }
 
 /**

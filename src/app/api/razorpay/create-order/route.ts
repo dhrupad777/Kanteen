@@ -5,6 +5,20 @@ import Razorpay from 'razorpay';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 import type { CreateRazorpayOrderRequest, CreateRazorpayOrderResponse, CheckoutItem } from '@/types';
 
+/**
+ * Kitchen hours: 8:00 AM – 8:45 PM IST.
+ * A 5-minute grace window (until 8:50 PM IST) covers checkouts initiated
+ * just before closing where network latency pushes the request past 8:45.
+ */
+function isKitchenOpen(): boolean {
+    const now = new Date();
+    // Convert UTC → IST (UTC+5:30)
+    const istMs = now.getTime() + (5 * 60 + 30) * 60_000;
+    const ist = new Date(istMs);
+    const total = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+    return total >= 8 * 60 && total < 20 * 60 + 50; // 08:00–20:50 IST (8:45 + 5 min grace)
+}
+
 // Input validation constants
 const MAX_ITEMS = 50;
 const MAX_ITEM_QUANTITY = 20;
@@ -33,6 +47,23 @@ export async function POST(request: NextRequest) {
                     status: 429,
                     headers: { 'Retry-After': Math.ceil(resetIn / 1000).toString() }
                 }
+            );
+        }
+
+        // Kitchen hours gate — reject orders outside 8:00 AM–8:45 PM IST
+        if (!isKitchenOpen()) {
+            return NextResponse.json(
+                { error: 'Kitchen is closed. Online ordering is available 8:00 AM – 8:45 PM.' },
+                { status: 403 }
+            );
+        }
+
+        // Maintenance mode gate — reject orders when student ordering is disabled
+        const settingsSnap = await db.collection('canteen_state').doc('settings').get();
+        if (settingsSnap.exists && settingsSnap.data()?.studentOrderingEnabled === false) {
+            return NextResponse.json(
+                { error: 'Online ordering is temporarily unavailable. Please check back soon.' },
+                { status: 503 }
             );
         }
 
@@ -226,9 +257,6 @@ export async function POST(request: NextRequest) {
 
     } catch (error: any) {
         console.error('Razorpay create-order error:', error instanceof Error ? error.message : 'Unknown error');
-        return NextResponse.json(
-            { error: error.message || 'Failed to create order' },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
     }
 }

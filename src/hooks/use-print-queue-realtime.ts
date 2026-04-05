@@ -19,6 +19,8 @@ interface PrintJob {
     customerEmail?: string;
     note?: string;
     isParcel?: boolean;
+    totalPrice?: number;
+    parcelCharge?: number;
     status: 'queued' | 'printing' | 'completed' | 'failed' | 'dead_letter';
     createdAt: Date;
     attempts: number;
@@ -130,6 +132,8 @@ export function usePrintQueueRealtime(options: UsePrintQueueRealtimeOptions = {}
             customerEmail: data.payload?.studentEmail,
             note: data.payload?.note,
             isParcel: data.payload?.isParcel || false,
+            totalPrice: data.payload?.totalPrice || 0,
+            parcelCharge: data.payload?.parcelCharge || 0,
             status: data.status,
             createdAt: data.createdAt instanceof Timestamp
                 ? data.createdAt.toDate()

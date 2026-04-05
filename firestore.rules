@@ -55,22 +55,25 @@ service cloud.firestore {
 
     // ====== ORDERS COLLECTION ======
     match /orders/{orderId} {
-      // Students can read their own orders or any Preparing/Ready order (for public board)
-      // Staff/managers can read all orders
-      allow read: if isAuthenticated()
-        && (resource.data.studentId == request.auth.uid
-            || isManager()
-            || resource.data.status in ['Preparing', 'Ready']);
+      // Staff with token-based role can read all orders (collection queries work).
+      // Students can read their own orders or any Preparing/Ready order.
+      // isManagerLegacy (allowlist exists() check) is intentionally excluded from
+      // collection queries — Firestore cannot evaluate per-document exists() calls
+      // on a query and will deny the whole query.
+      allow read: if isKitchenStaff()
+        || (isAuthenticated()
+            && (resource.data.studentId == request.auth.uid
+                || resource.data.status in ['Preparing', 'Ready']));
       
       // Only server (Admin SDK) can create orders
       allow create: if false;
       
-      // Staff can only update specific fields
-      allow update: if isManager() 
+      // Staff can only update specific fields (token-based check only for reliable evaluation)
+      allow update: if isKitchenStaff()
         && onlyModifiesFields(['status', 'kitchen', 'otp', 'audit']);
       
-      // Only admin can delete
-      allow delete: if isAdmin();
+      // Admin or kitchen_manager can delete (for end-of-day order cleanup)
+      allow delete: if isAdmin() || hasRole('kitchen_manager');
     }
 
     // ====== ORDER COUNTERS ======
@@ -93,8 +96,10 @@ service cloud.firestore {
 
     // ====== PRINT JOBS ======
     match /print_jobs/{jobId} {
-      allow read: if isManager(); // Kitchen staff need real-time listener access
-      allow write: if false; // Only via Admin SDK (claim/complete/fail go through API routes)
+      allow read: if isKitchenStaff();
+      // kitchen_manager can delete print_jobs directly (batch cleanup from OrderCleanup component)
+      allow delete: if hasRole('kitchen_manager') || isAdmin();
+      allow create, update: if false; // Only via Admin SDK
     }
 
     // ====== METADATA ======

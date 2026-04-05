@@ -13,8 +13,8 @@ const PAY_PREF_PREFIX = 'kanteen_pay_';
 
 interface SavedPayPref {
     contact?: string;
-    method?: string;
-    vpa?: string;
+    method?: string;  // 'upi' | 'card' | 'netbanking' | 'wallet'
+    vpa?: string;     // e.g. 'user@ybl'
 }
 
 function loadPayPref(uid: string): SavedPayPref {
@@ -39,6 +39,9 @@ interface UseRazorpayOptions {
     onSuccess?: (response: VerifyPaymentResponse) => void;
     onError?: (error: string) => void;
     onCancel?: () => void;
+    /** Called when the modal closes with no confirmed result (e.g. UPI app switch).
+     *  Payment may still be processing — keep UI in a "checking" state. */
+    onPending?: () => void;
 }
 
 interface RazorpayCheckoutOptions {
@@ -58,6 +61,8 @@ interface RazorpayCheckoutOptions {
 export function useRazorpay(options: UseRazorpayOptions = {}) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Tracks the active Firestore order listener so a second checkout call cleans up the first
+    const activeListenerRef = { current: null as (() => void) | null };
 
     const loadRazorpayScript = useCallback((): Promise<boolean> => {
         return new Promise((resolve) => {
@@ -136,6 +141,10 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
         setLoading(true);
         setError(null);
 
+        // Cancel any listener from a previous checkout that never resolved
+        activeListenerRef.current?.();
+        activeListenerRef.current = null;
+
         try {
             // 1. Load Razorpay script
             const scriptLoaded = await loadRazorpayScript();
@@ -166,6 +175,7 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     if (resolved) return;
                     resolved = true;
                     unsubscribeFirestore?.();
+                    activeListenerRef.current = null;
 
                     // Cache payment preferences for next checkout
                     const toSave: SavedPayPref = {};
@@ -184,7 +194,7 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                 // the student sees their confirmation as soon as the payment settles.
                 import('@/lib/firebase').then(({ db }) =>
                     import('firebase/firestore').then(({ doc, onSnapshot }) => {
-                        unsubscribeFirestore = onSnapshot(
+                        const unsub = onSnapshot(
                             doc(db, 'orders', orderData.orderId),
                             (snap) => {
                                 if (!snap.exists() || resolved) return;
@@ -199,6 +209,8 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                             },
                             () => { /* ignore snapshot errors — handler is primary path */ }
                         );
+                        unsubscribeFirestore = unsub;
+                        activeListenerRef.current = unsub;
                     })
                 ).catch(() => { /* Firestore unavailable — handler is primary path */ });
 
@@ -207,9 +219,32 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     name: orderData.prefill.name,
                     email: orderData.prefill.email,
                 };
+                // Pre-fill contact number — skips the phone entry screen for returning users
                 if (pref.contact) prefill.contact = pref.contact;
-                if (pref.method) prefill.method = pref.method;
+                // Pre-fill UPI VPA — Razorpay will jump straight to UPI collect screen
                 if (pref.method === 'upi' && pref.vpa) prefill.vpa = pref.vpa;
+
+                // ── Build display config to pre-select last-used payment method ──
+                // `config.display.defaultBlock` jumps the user directly to their preferred
+                // payment method instead of showing the full method list.
+                const config: Record<string, any> = { display: {} };
+                if (pref.method === 'upi') {
+                    config.display.defaultBlock = 'upi';
+                    config.display.blocks = {
+                        upi: { name: 'Pay via UPI', instruments: [{ method: 'upi' }] },
+                        other: { name: 'Other methods' },
+                    };
+                    config.display.sequence = ['block.upi', 'block.other'];
+                    config.display.preferences = { show_default_blocks: true };
+                } else if (pref.method === 'card') {
+                    config.display.defaultBlock = 'card';
+                    config.display.blocks = {
+                        card: { name: 'Pay via Card', instruments: [{ method: 'card' }] },
+                        other: { name: 'Other methods' },
+                    };
+                    config.display.sequence = ['block.card', 'block.other'];
+                    config.display.preferences = { show_default_blocks: true };
+                }
 
                 const razorpayOptions: Record<string, any> = {
                     key: orderData.keyId,
@@ -225,6 +260,9 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     })(),
                     order_id: orderData.razorpayOrderId,
                     prefill,
+                    // Only attach config when we have a method preference — avoids
+                    // sending an empty config object to Razorpay on first-time users
+                    ...(pref.method ? { config } : {}),
                     theme: { color: '#FF8C00' },
                     // Retry once automatically — covers transient network errors
                     retry: { enabled: true, max_count: 1 },
@@ -262,16 +300,35 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     modal: {
                         ondismiss: () => {
                             if (!resolved) {
-                                unsubscribeFirestore?.();
                                 setLoading(false);
                                 if (lastFailureReason) {
-                                    // Payment actually failed (insufficient funds etc.) — show
-                                    // the real reason now that the modal is closed and visible.
+                                    // Confirmed payment failure (payment.failed fired earlier)
+                                    unsubscribeFirestore?.();
                                     options.onError?.(lastFailureReason);
                                     reject(new Error(lastFailureReason));
-                                } else {
+                                } else if (Date.now() - modalOpenTime < 5000) {
+                                    // Dismissed within 5 s of opening — user clicked X before
+                                    // initiating any payment, so cancel immediately.
+                                    unsubscribeFirestore?.();
                                     options.onCancel?.();
                                     reject(new Error('Payment cancelled'));
+                                } else {
+                                    // Modal closed after ≥5 s with no confirmed failure.
+                                    // UPI apps (Google Pay, PhonePe, etc.) redirect the user
+                                    // back to Chrome after payment and may not re-trigger the
+                                    // Razorpay handler — but the webhook will update Firestore.
+                                    // Keep the Firestore listener alive and wait for it.
+                                    options.onPending?.();
+                                    // Auto-cancel after 2 minutes if the webhook never arrives.
+                                    setTimeout(() => {
+                                        if (!resolved) {
+                                            resolved = true;
+                                            unsubscribeFirestore?.();
+                                            options.onCancel?.();
+                                            reject(new Error('Payment timed out'));
+                                        }
+                                    }, 2 * 60 * 1000);
+                                    // Do NOT reject here — Firestore listener owns the resolve.
                                 }
                             }
                             // If already resolved (payment succeeded), do nothing.
@@ -282,6 +339,10 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                         confirm_close: false,
                     },
                 };
+
+                // Track modal open time — used to distinguish a quick X-close from a
+                // UPI app-switch dismiss (which happens after several seconds).
+                const modalOpenTime = Date.now();
 
                 const razorpay = new window.Razorpay(razorpayOptions);
                 razorpay.on('payment.failed', (response: any) => {

@@ -20,6 +20,7 @@ type CartAction =
     | { type: "REMOVE_ITEM"; payload: string }
     | { type: "INCREMENT"; payload: string }
     | { type: "DECREMENT"; payload: string }
+    | { type: "TOGGLE_PARCEL"; payload: string } // itemId — only for non-daily_menu items
     | { type: "CLEAR" };
 
 // Reducer
@@ -100,6 +101,16 @@ function cartReducer(state: CartState, action: CartAction): CartState {
             };
         }
 
+        case "TOGGLE_PARCEL":
+            return {
+                ...state,
+                items: state.items.map((i) =>
+                    i.itemId === action.payload && i.category !== 'daily_menu'
+                        ? { ...i, wantParcel: !i.wantParcel }
+                        : i
+                ),
+            };
+
         case "CLEAR":
             return { ...state, items: [] };
 
@@ -132,6 +143,8 @@ interface CartContextType {
     removeItem: (itemId: string) => void;
     increment: (itemId: string) => void;
     decrement: (itemId: string) => void;
+    /** Toggle per-item parcel for non-daily-menu items. No-op for daily_menu. */
+    toggleItemParcel: (itemId: string) => void;
     clearCart: () => void;
     getItemQty: (itemId: string) => number;
     getCheckoutItems: () => CheckoutItem[];
@@ -229,6 +242,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "DECREMENT", payload: itemId });
     }, []);
 
+    const toggleItemParcel = useCallback((itemId: string) => {
+        dispatch({ type: "TOGGLE_PARCEL", payload: itemId });
+    }, []);
+
     const clearCart = useCallback(() => {
         dispatch({ type: "CLEAR" });
     }, []);
@@ -264,6 +281,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 removeItem,
                 increment,
                 decrement,
+                toggleItemParcel,
                 clearCart,
                 getItemQty,
                 getCheckoutItems,
