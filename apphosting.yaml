@@ -113,11 +113,8 @@ env:
     availability:
       - RUNTIME
 
-  # Firebase Admin SDK service account key — required for Firestore/Auth admin operations.
-  # Set this via Firebase App Hosting secrets (NOT in this file — keep private keys out of git).
-  # Run: firebase apphosting:secrets:set FIREBASE_SERVICE_ACCOUNT_KEY
-  # Then reference it here as: secret: FIREBASE_SERVICE_ACCOUNT_KEY
-  # - variable: FIREBASE_SERVICE_ACCOUNT_KEY
-  #   secret: FIREBASE_SERVICE_ACCOUNT_KEY
-  #   availability:
-  #     - RUNTIME
+  # Firebase Admin SDK service account key — stored as a Firebase secret (not in git).
+  - variable: FIREBASE_SERVICE_ACCOUNT_KEY
+    secret: FIREBASE_SERVICE_ACCOUNT_KEY
+    availability:
+      - RUNTIME
