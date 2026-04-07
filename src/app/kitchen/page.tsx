@@ -100,39 +100,18 @@ export default function KitchenPage() {
         }
     }, [toast, markPrinted, failJob]);
 
-    // ── When printer connects: flush Firestore queue + unsent orders ──────────
+    // ── When printer connects: recover stale jobs only. Do NOT auto-flush. ────
+    // Previous auto-flush behavior caused the print queue to silently disappear
+    // on connect because successful-looking sendToBluetoothPrinter calls would
+    // mark jobs complete even when nothing actually printed. User must now press
+    // "Print All Pending" to flush — the queue stays visible until they do.
     const prevPrinterRef = useRef<typeof printer>(null);
     useEffect(() => {
         if (printer && !prevPrinterRef.current) {
-            // 0. Recover any jobs stuck in 'printing' from a previous session
             recoverStaleJobs();
-
-            // 1. Flush Firestore queued jobs (cross-session recovery)
-            jobsRef.current.forEach(job => processQueuedJob(job));
-
-            // 2. Flush orders that arrived while printer was disconnected (in-session queue)
-            const currentOrders = ordersRef.current;
-            const currentUnsent = new Set(unsentOrdersRef.current);
-            currentUnsent.forEach(orderId => {
-                const order = currentOrders.find(o => o.id === orderId);
-                if (!order || order.status !== 'Preparing') {
-                    unsentOrdersRef.current.delete(orderId);
-                    setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
-                    return;
-                }
-                const receiptText = generateReceiptDataRef.current(buildJob(order));
-                sendToBluetoothPrinterRef.current(receiptText).then(ok => {
-                    if (ok) {
-                        toast({ title: `Printed Token ${order.token}`, description: 'Queued receipt printed' });
-                        markPrinted(order.id);
-                        unsentOrdersRef.current.delete(orderId);
-                        setUnsentOrderIds(prev => { const s = new Set(prev); s.delete(orderId); return s; });
-                    }
-                });
-            });
         }
         prevPrinterRef.current = printer;
-    }, [printer, processQueuedJob, recoverStaleJobs, toast, markPrinted]);
+    }, [printer, recoverStaleJobs]);
 
     // ── Auto-print: watch orders for new Preparing items ─────────────────────
     // Primary trigger for auto-printing.
