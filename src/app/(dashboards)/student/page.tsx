@@ -11,6 +11,7 @@ import { db } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import Link from "next/link";
+import Image from "next/image";
 import { MenuDisplay } from '@/components/menu-display';
 import { StudentDashboardSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -428,6 +429,18 @@ export default function StudentDashboardPage() {
         </div>
       )}
 
+      <div className="relative w-full overflow-hidden rounded-2xl shadow-sm">
+        <Image
+          src="/RedBull.jpeg"
+          alt="Red Bull"
+          width={1600}
+          height={400}
+          priority
+          className="w-full h-auto object-cover"
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 100vw, 1200px"
+        />
+      </div>
+
       {myActiveOrders.length > 0 && (
         <DashboardSection
           title="My Orders"
@@ -445,8 +458,7 @@ export default function StudentDashboardPage() {
         <div className="rounded-2xl border border-orange-100 bg-orange-50 px-5 py-4 flex items-center gap-3">
           <Wrench className="h-5 w-5 text-orange-400 shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-orange-800">Online ordering is paused</p>
-            <p className="text-xs text-orange-600 mt-0.5">We are adding some new features, see you soon — Kanteen</p>
+            <p className="text-sm font-semibold text-orange-800">Not taking orders, at the moment</p>
           </div>
         </div>
       ) : (
