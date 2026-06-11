@@ -19,6 +19,8 @@ import { CouponEntryForm } from '@/components/coupon-entry-form';
 import { Switch } from '@/components/ui/switch';
 import { usePrinter } from '@/hooks/use-printer';
 import { usePrintQueueRealtime } from '@/hooks/use-print-queue-realtime';
+import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import Link from 'next/link';
 
 export default function KitchenPage() {
@@ -42,6 +44,39 @@ export default function KitchenPage() {
     useEffect(() => {
         localStorage.setItem('kanteen_auto_print', String(autoPrint));
     }, [autoPrint]);
+
+    // ── 24/7 kitchen override — bypasses the 8:00 AM – 8:45 PM ordering gate ─
+    const [kitchen24x7, setKitchen24x7] = useState(false);
+    const [toggling24x7, setToggling24x7] = useState(false);
+    useEffect(() => {
+        const unsub = onSnapshot(
+            doc(db, 'canteen_state', 'settings'),
+            (snap) => { setKitchen24x7(snap.exists() && snap.data().kitchen24x7 === true); },
+            () => { /* keep current state on error */ },
+        );
+        return () => unsub();
+    }, []);
+
+    const toggle24x7 = async () => {
+        setToggling24x7(true);
+        const next = !kitchen24x7;
+        try {
+            await setDoc(doc(db, 'canteen_state', 'settings'), {
+                kitchen24x7: next,
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+            toast({
+                title: next ? 'Kitchen open 24/7' : 'Kitchen hours restored',
+                description: next
+                    ? 'Students can order at any time.'
+                    : 'Ordering limited to 8:00 AM – 8:45 PM.',
+            });
+        } catch {
+            toast({ title: 'Failed to update', variant: 'destructive' });
+        } finally {
+            setToggling24x7(false);
+        }
+    };
 
     // Stable refs so async callbacks always see latest values
     const printerRef = useRef(printer);
@@ -296,6 +331,25 @@ export default function KitchenPage() {
                                 <EyeOff className="h-5 w-5 text-primary" />
                             </Button>
                         </Link>
+                        {/* 24/7 override toggle */}
+                        <Button
+                            variant="outline"
+                            onClick={toggle24x7}
+                            disabled={toggling24x7}
+                            title={kitchen24x7 ? 'Limit ordering to 8:00 AM – 8:45 PM' : 'Open kitchen 24/7 (bypass hours)'}
+                            className={cn(
+                                "h-10 md:h-11 shrink-0 px-3 gap-1.5 font-bold text-xs",
+                                kitchen24x7
+                                    ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:text-indigo-800"
+                                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                            )}
+                        >
+                            {toggling24x7
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <Clock className="h-4 w-4" />
+                            }
+                            <span className="hidden md:inline">{kitchen24x7 ? '24/7' : '8–8:45'}</span>
+                        </Button>
                         {/* Bluetooth status indicator */}
                         <div
                             className={cn(

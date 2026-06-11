@@ -1,7 +1,7 @@
 // Kanteen Service Worker — push notifications + asset caching
 
-const STATIC_CACHE = 'kanteen-static-v1';
-const PAGE_CACHE   = 'kanteen-pages-v1';
+const STATIC_CACHE = 'kanteen-static-v4';
+const PAGE_CACHE   = 'kanteen-pages-v4';
 const KEEP_CACHES  = [STATIC_CACHE, PAGE_CACHE];
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────

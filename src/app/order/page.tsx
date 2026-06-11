@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { signInWithGoogle, isInAppBrowser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, ArrowLeft, Utensils, Coffee, Soup, Sandwich, Disc, CircleDot, ChefHat, UtensilsCrossed, Carrot, Spline, Clock, Loader2, Wrench } from "lucide-react";
+import { Search, ArrowLeft, Utensils, Coffee, Soup, Sandwich, Disc, CircleDot, ChefHat, UtensilsCrossed, Carrot, Spline, Clock, Wrench } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useRouter } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -14,7 +14,7 @@ import { db } from "@/lib/firebase";
 // Order-specific imports
 import { useCart } from "@/contexts/cart-provider";
 import { useMenuItems } from "@/hooks/use-menu-items";
-import { useRazorpay } from "@/hooks/use-razorpay";
+
 import { MenuItemCard } from "@/components/order/menu-item-card";
 import { MENU_CATEGORIES, MenuCategory, MenuItem } from "@/types/menu-item";
 import { useToast } from "@/hooks/use-toast";
@@ -71,22 +71,33 @@ function OrderContent() {
     const router = useRouter();
 
     // Kitchen hours gate — re-evaluated every minute so the page auto-updates
-    const [kitchenOpen, setKitchenOpen] = useState(() => isKitchenOpen());
+    const [withinHours, setWithinHours] = useState(() => isKitchenOpen());
     useEffect(() => {
-        const id = setInterval(() => setKitchenOpen(isKitchenOpen()), 60_000);
+        const id = setInterval(() => setWithinHours(isKitchenOpen()), 60_000);
         return () => clearInterval(id);
     }, []);
 
-    // Online ordering toggle — controlled from /counter
+    // Online ordering toggle + 24/7 override — controlled from /counter and /kitchen
     const [orderingEnabled, setOrderingEnabled] = useState<boolean | null>(null);
+    const [kitchen24x7, setKitchen24x7] = useState(false);
     useEffect(() => {
         const unsub = onSnapshot(
             doc(db, 'canteen_state', 'settings'),
-            (snap) => setOrderingEnabled(snap.exists() ? snap.data().studentOrderingEnabled !== false : true),
+            (snap) => {
+                if (snap.exists()) {
+                    const data = snap.data();
+                    setOrderingEnabled(data.studentOrderingEnabled !== false);
+                    setKitchen24x7(data.kitchen24x7 === true);
+                } else {
+                    setOrderingEnabled(true);
+                    setKitchen24x7(false);
+                }
+            },
             () => setOrderingEnabled(true),
         );
         return () => unsub();
     }, []);
+    const kitchenOpen = kitchen24x7 || withinHours;
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState("");
     const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -98,47 +109,9 @@ function OrderContent() {
     const { items: menuItems, loading: menuLoading, error: menuError } = useMenuItems({ includeUnavailable: false });
 
     // Cart
-    const { totalItems, totalPrice, hasDailyItems, specialParcelCharge, hasNormalItems, getCheckoutItems, clearCart } = useCart();
+    const { totalItems, clearCart } = useCart();
 
-    // UPI pending state — shown when user leaves via a UPI app and hasn't confirmed yet
-    const [paymentPending, setPaymentPending] = useState(false);
-
-    // Razorpay
-    const { checkout: razorpayCheckout, loading: paymentLoading } = useRazorpay({
-        onSuccess: (response) => {
-            setPaymentPending(false);
-            clearCart();
-            sessionStorage.setItem('orderConfirmed', JSON.stringify({
-                token: response.token,
-                orderId: response.orderId,
-            }));
-            router.replace('/student');
-        },
-        onError: (error) => {
-            setPaymentPending(false);
-            const isVerificationError = error.toLowerCase().includes('verification') || error.toLowerCase().includes('verify');
-            toast({
-                title: isVerificationError ? "Payment verification failed" : "Payment failed",
-                description: isVerificationError
-                    ? `${error}. If money was deducted, it will be refunded within 5–7 business days. Contact canteen staff with your payment ID.`
-                    : error,
-                variant: "destructive",
-            });
-        },
-        onCancel: () => {
-            setPaymentPending(false);
-            toast({
-                title: "Payment cancelled",
-                description: "You cancelled the payment. Your cart is still saved.",
-            });
-        },
-        onPending: () => {
-            // UPI app switch — modal closed but payment may still be processing.
-            // Keep page visible and show a waiting overlay; Firestore listener will
-            // redirect to /student once the webhook confirms the payment.
-            setPaymentPending(true);
-        },
-    });
+    // Payment is now handled on the /cart page — no Razorpay hook needed here.
 
     async function handleGoogleSignIn() {
         try {
@@ -160,7 +133,7 @@ function OrderContent() {
         }
     }
 
-    async function handleCheckout() {
+    function handleCheckout() {
         if (totalItems === 0) {
             toast({
                 title: "Cart is empty",
@@ -169,32 +142,8 @@ function OrderContent() {
             });
             return;
         }
-
-        if (!user?.uid) {
-            toast({
-                title: "Authentication required",
-                description: "Please sign in to complete your order.",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        try {
-            const checkoutItems = getCheckoutItems();
-            const parcelCharge = specialParcelCharge + (hasDailyItems && hasNormalItems ? 5 : 0);
-            await razorpayCheckout({
-                items: checkoutItems,
-                isParcel: hasDailyItems,
-                parcelCharge,
-                platformCharges: 0,
-            });
-            // Success is handled by onSuccess callback
-        } catch (error: any) {
-            // Error and cancel are handled by callbacks
-            if (!error.message?.includes('cancelled')) {
-                console.error("Checkout failed", error);
-            }
-        }
+        // Navigate to cart page for parcel configuration and payment
+        router.push('/cart');
     }
 
     // Filter items by debounced search query (memoized for performance)
@@ -221,7 +170,7 @@ function OrderContent() {
     }
 
     // Maintenance mode — toggled from /counter dashboard
-    if (orderingEnabled === false && !paymentLoading) {
+    if (orderingEnabled === false) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
                 <div className="text-center max-w-sm">
@@ -239,8 +188,7 @@ function OrderContent() {
     }
 
     // Kitchen hours gate — 8:00 AM to 8:45 PM
-    // Never interrupt an active payment flow (user opened Razorpay before cutoff)
-    if (!kitchenOpen && !paymentLoading) {
+    if (!kitchenOpen) {
         const now = new Date();
         const isTooEarly = now.getHours() < 8;
         const nextOpenLabel = isTooEarly ? 'Opens today at 8:00 AM' : 'Opens tomorrow at 8:00 AM';
@@ -337,19 +285,6 @@ function OrderContent() {
     // State 2: Fully Authenticated -> Order Page
     return (
         <div className="min-h-screen bg-gray-50 pb-28 md:pb-6 overflow-x-hidden">
-            {/* UPI payment pending overlay */}
-            {paymentPending && !paymentLoading && (
-                <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center gap-4 p-6 text-center">
-                    <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                    <h2 className="text-xl font-bold text-gray-900">Verifying Payment</h2>
-                    <p className="text-gray-500 text-sm max-w-xs">
-                        Your UPI payment is being confirmed. Please don&apos;t close this page.
-                    </p>
-                    <p className="text-xs text-gray-400">
-                        This usually takes a few seconds. You&apos;ll be redirected automatically.
-                    </p>
-                </div>
-            )}
             {/* Header */}
             <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-gray-100 safe-area-top">
                 <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4">

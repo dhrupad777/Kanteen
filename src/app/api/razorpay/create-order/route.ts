@@ -4,6 +4,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 import Razorpay from 'razorpay';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
 import type { CreateRazorpayOrderRequest, CreateRazorpayOrderResponse, CheckoutItem } from '@/types';
+import { calculatePaymentBreakdown } from '@/lib/payment-fee';
+import { isNoParcelCategory } from '@/lib/parcel-categories';
+import { calculateParcelCharge, type ParcelItem } from '@/lib/parcel-calc';
 
 /**
  * Kitchen hours: 8:00 AM – 8:45 PM IST.
@@ -50,8 +53,13 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Kitchen hours gate — reject orders outside 8:00 AM–8:45 PM IST
-        if (!isKitchenOpen()) {
+        // Fetch canteen settings once — used for both the 24/7 override and the maintenance gate
+        const settingsSnap = await db.collection('canteen_state').doc('settings').get();
+        const settingsData = settingsSnap.exists ? settingsSnap.data() : null;
+        const kitchen24x7 = settingsData?.kitchen24x7 === true;
+
+        // Kitchen hours gate — reject orders outside 8:00 AM–8:45 PM IST unless staff has enabled 24/7 mode
+        if (!kitchen24x7 && !isKitchenOpen()) {
             return NextResponse.json(
                 { error: 'Kitchen is closed. Online ordering is available 8:00 AM – 8:45 PM.' },
                 { status: 403 }
@@ -59,8 +67,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Maintenance mode gate — reject orders when student ordering is disabled
-        const settingsSnap = await db.collection('canteen_state').doc('settings').get();
-        if (settingsSnap.exists && settingsSnap.data()?.studentOrderingEnabled === false) {
+        if (settingsData?.studentOrderingEnabled === false) {
             return NextResponse.json(
                 { error: 'Online ordering is temporarily unavailable. Please check back soon.' },
                 { status: 503 }
@@ -100,9 +107,8 @@ export async function POST(request: NextRequest) {
         // Validate and fetch item prices from Firestore (server-side price verification)
         const menuItemsRef = db.collection('menu_items');
         const validatedItems: CheckoutItem[] = [];
+        const parcelItems: ParcelItem[] = [];
         let serverCalculatedTotal = 0;
-        let specialParcelCharge = 0;
-        let hasNormalItems = false;
 
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
@@ -137,13 +143,22 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: `Item ${i + 1}: Invalid price configuration` }, { status: 400 });
             }
 
-            // Per-item parcel charge stored on the Firestore menu item document
-            const itemParcelCharge = typeof menuItemData.parcelCharge === 'number' ? menuItemData.parcelCharge : 0;
-            if (itemParcelCharge > 0) {
-                specialParcelCharge += itemParcelCharge * item.qty;
+            // Determine effective wantParcel from server-known category
+            const serverCategory = (menuItemData.category as string) || '';
+            let effectiveWantParcel: boolean;
+            if (serverCategory === 'daily_menu') {
+                effectiveWantParcel = true; // always parcelled
+            } else if (isNoParcelCategory(serverCategory)) {
+                effectiveWantParcel = false; // never parcelled
             } else {
-                hasNormalItems = true;
+                effectiveWantParcel = item.wantParcel === true; // trust client toggle
             }
+
+            parcelItems.push({
+                category: serverCategory,
+                qty: item.qty,
+                wantParcel: effectiveWantParcel,
+            });
 
             const itemTotal = serverPrice * item.qty;
             serverCalculatedTotal += itemTotal;
@@ -156,24 +171,26 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        // Dynamic Parcel Charge (Server-side validation)
-        const baseParcelCharge = (isParcel && hasNormalItems) ? 5 : 0;
-        const totalParcelCharge = specialParcelCharge + baseParcelCharge;
-        
+        // Server-side parcel charge calculation (shared with client)
+        const parcelBreakdown = calculateParcelCharge(parcelItems);
+        const totalParcelCharge = parcelBreakdown.totalParcelCharge;
+        const effectiveIsParcel = parcelBreakdown.isParcel;
+
         serverCalculatedTotal += totalParcelCharge;
-        
-        // Define effectiveIsParcel for the order document
-        const effectiveIsParcel = isParcel || specialParcelCharge > 0;
 
         // Platform charges (currently ₹0 — guard against negative values from client)
         const sanitizedPlatformCharges = Math.max(0, Number(platformCharges) || 0);
         serverCalculatedTotal += sanitizedPlatformCharges;
 
-        if (serverCalculatedTotal > MAX_TOTAL_PRICE) {
+        // Gross up so the merchant nets serverCalculatedTotal after Razorpay's 2.36% deduction.
+        // The customer is charged grossTotal; gatewayFee is the transparency line item.
+        const { targetRevenue, gatewayFee, grossTotal } = calculatePaymentBreakdown(serverCalculatedTotal);
+
+        if (grossTotal > MAX_TOTAL_PRICE) {
             return NextResponse.json({ error: 'Total exceeds maximum allowed' }, { status: 400 });
         }
 
-        const amountPaise = Math.round(serverCalculatedTotal * 100);
+        const amountPaise = Math.round(grossTotal * 100);
 
         // ====== CREATE RAZORPAY ORDER ======
         const keyId = process.env.RAZORPAY_KEY_ID;
@@ -206,11 +223,12 @@ export async function POST(request: NextRequest) {
         const now = new Date();
         const dateKey = now.toISOString().split('T')[0]; // YYYY-MM-DD
 
-        // Format items to match existing order format
-        const formattedItems = validatedItems.map(item => ({
+        // Format items to match existing order format (include parcel flag for receipt)
+        const formattedItems = validatedItems.map((item, idx) => ({
             name: item.name,
             quantity: item.qty,
             price: item.price,
+            wantParcel: parcelItems[idx]?.wantParcel ?? false,
         }));
 
         const orderRef = db.collection('orders').doc();
@@ -219,7 +237,9 @@ export async function POST(request: NextRequest) {
             userName: decodedToken.name || '',
             userEmail: decodedToken.email || '',
             items: formattedItems,
-            totalPrice: serverCalculatedTotal,
+            totalPrice: grossTotal,
+            subtotal: targetRevenue,
+            paymentGatewayFee: gatewayFee,
             isParcel: effectiveIsParcel,
             parcelCharge: totalParcelCharge,
             platformCharges: sanitizedPlatformCharges,

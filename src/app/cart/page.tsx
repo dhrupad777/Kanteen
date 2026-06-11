@@ -14,10 +14,17 @@ import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
+import { calculatePaymentBreakdown } from "@/lib/payment-fee";
+import { calculateParcelCharge, type ParcelItem } from "@/lib/parcel-calc";
+import { isNoParcelCategory, isContainerCategory, isBagCategory } from "@/lib/parcel-categories";
 
 function isKitchenOpen(): boolean {
+    // Convert UTC → IST (UTC+5:30) so the gate works regardless of device timezone.
+    // Mirrors the server check in /api/razorpay/create-order.
     const now = new Date();
-    const total = now.getHours() * 60 + now.getMinutes();
+    const istMs = now.getTime() + (5 * 60 + 30) * 60_000;
+    const ist = new Date(istMs);
+    const total = ist.getUTCHours() * 60 + ist.getUTCMinutes();
     return total >= 8 * 60 && total < 20 * 60 + 45;
 }
 
@@ -28,30 +35,34 @@ export default function CartPage() {
     const { items, isHydrated, totalItems, totalPrice, hasDailyItems, increment, decrement, removeItem, clearCart, getCheckoutItems, toggleItemParcel } = useCart();
     const [processing, setProcessing] = useState(false);
 
-    const [kitchenOpen, setKitchenOpen] = useState(() => isKitchenOpen());
+    const [withinHours, setWithinHours] = useState(() => isKitchenOpen());
     useEffect(() => {
-        const id = setInterval(() => setKitchenOpen(isKitchenOpen()), 60_000);
+        const id = setInterval(() => setWithinHours(isKitchenOpen()), 60_000);
         return () => clearInterval(id);
     }, []);
 
     const [orderingEnabled, setOrderingEnabled] = useState<boolean | null>(null);
+    const [kitchen24x7, setKitchen24x7] = useState(false);
     useEffect(() => {
         const unsub = onSnapshot(
             doc(db, 'canteen_state', 'settings'),
             (snap) => {
                 if (snap.exists()) {
-                    const val = snap.data()?.studentOrderingEnabled;
+                    const data = snap.data();
+                    const val = data?.studentOrderingEnabled;
                     setOrderingEnabled(typeof val === 'boolean' ? val : true);
+                    setKitchen24x7(data?.kitchen24x7 === true);
                 } else {
                     setOrderingEnabled(true);
+                    setKitchen24x7(false);
                 }
             },
             () => setOrderingEnabled(true), // on error, default to open
         );
         return () => unsub();
     }, []);
+    const kitchenOpen = kitchen24x7 || withinHours;
     const [parcelSheetOpen, setParcelSheetOpen] = useState(false);
-    const isParcel = hasDailyItems || items.some(i => i.wantParcel && i.category !== 'daily_menu');
     const [note, setNote] = useState('');
 
     // Real-time availability check — fetch all active items (including unavailable ones)
@@ -110,18 +121,24 @@ export default function CartPage() {
         },
     });
 
-    // mainCourseParcel = per-item packaging from Main Course (always applied, set in Firestore)
-    // otherParcel      = ₹5 × qty for each non-Main-Course item the student chose to parcel
-    const { mainCourseParcel, otherParcel, parcelCharge } = useMemo(() => {
-        const mainCourseParcel = items.reduce((sum, item) => sum + (item.parcelCharge ?? 0) * item.qty, 0);
-        const otherParcel = items
-            .filter(i => i.category !== 'daily_menu' && i.wantParcel)
-            .reduce((sum, i) => sum + 5 * i.qty, 0);
-        return { mainCourseParcel, otherParcel, parcelCharge: mainCourseParcel + otherParcel };
+    // Parcel charge breakdown using the shared calculation
+    const parcelBreakdown = useMemo(() => {
+        const parcelItems: ParcelItem[] = items.map(i => ({
+            category: i.category,
+            qty: i.qty,
+            wantParcel: i.category === 'daily_menu' ? true : !!i.wantParcel,
+        }));
+        return calculateParcelCharge(parcelItems);
     }, [items]);
 
+    const { totalParcelCharge: parcelCharge, isParcel, mainCourseParcel, containerParcel, bagParcel, dailyRegularsParcel } = parcelBreakdown;
+
+
     const platformCharges = 0; // Platform convenience charges (currently ₹0)
-    const finalTotal = totalPrice + parcelCharge + platformCharges;
+    // Target revenue = what Kanteen must net. Razorpay deducts 2.36%, so we
+    // gross up the customer-facing total with calculatePaymentBreakdown.
+    const targetRevenue = totalPrice + parcelCharge + platformCharges;
+    const { gatewayFee, grossTotal: finalTotal } = calculatePaymentBreakdown(targetRevenue);
 
     // Show loading state while checking localStorage
     if (!isHydrated) {
@@ -320,7 +337,7 @@ export default function CartPage() {
                                         <span className="font-medium text-gray-900 text-sm">Parcel Settings</span>
                                         <span className={`text-xs ${isParcel ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
                                             {parcelCharge > 0
-                                                ? `${[hasDailyItems && 'Main Course', otherParcel > 0 && `${items.filter(i => i.wantParcel && i.category !== 'daily_menu').length} other item(s)`].filter(Boolean).join(' + ')} packed · +₹${parcelCharge}`
+                                                ? `Packaging · +₹${parcelCharge}`
                                                 : 'Tap to choose which items to pack'}
                                         </span>
                                     </div>
@@ -331,16 +348,39 @@ export default function CartPage() {
                             <SheetContent side="bottom" className="rounded-t-3xl pb-8 max-h-[80vh] overflow-y-auto">
                                 <SheetHeader className="mb-4">
                                     <SheetTitle>Parcel Settings</SheetTitle>
-                                    <SheetDescription>Choose which items you want packaged. Each packed item costs ₹5 extra per unit.</SheetDescription>
+                                    <SheetDescription>Select items to pack. Charges vary by item type.</SheetDescription>
                                 </SheetHeader>
 
                                 <div className="space-y-3">
-                                    {items.map((item) => {
+                                    {items
+                                        .filter(item => !isNoParcelCategory(item.category))
+                                        .map((item) => {
                                         const isMainCourse = item.category === 'daily_menu';
+                                        const isExtra = item.category === 'daily_regulars';
+                                        const isContainer = isContainerCategory(item.category);
+                                        const isBag = isBagCategory(item.category);
                                         const packed = isMainCourse || !!item.wantParcel;
-                                        const itemParcelCost = isMainCourse
-                                            ? (item.parcelCharge ?? 0) * item.qty
-                                            : item.wantParcel ? 5 * item.qty : 0;
+
+                                        // Determine label text
+                                        let costLabel: string;
+                                        if (isMainCourse) {
+                                            costLabel = 'Flat ₹5 packaging';
+                                        } else if (isExtra) {
+                                            if (hasDailyItems) {
+                                                costLabel = 'Free (packed with Main Course)';
+                                            } else {
+                                                costLabel = 'Flat ₹5 for all extras';
+                                            }
+                                        } else if (isContainer) {
+                                            const cost = 5 * item.qty;
+                                            costLabel = item.wantParcel
+                                                ? (item.qty > 1 ? `+₹${cost} (₹5 × ${item.qty})` : '+₹5')
+                                                : '₹5/item';
+                                        } else if (isBag) {
+                                            costLabel = item.wantParcel ? '+₹5 flat' : 'Flat ₹5';
+                                        } else {
+                                            costLabel = packed ? 'Packed' : 'Not packed';
+                                        }
 
                                         return (
                                             <div key={item.itemId} className={`flex items-center gap-3 p-3 rounded-2xl border ${packed ? 'bg-orange-50 border-orange-100' : 'bg-gray-50 border-gray-100'}`}>
@@ -348,9 +388,7 @@ export default function CartPage() {
                                                     <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
                                                     <p className="text-xs text-gray-500">
                                                         {item.qty > 1 && `${item.qty}× · `}
-                                                        {isMainCourse
-                                                            ? itemParcelCost > 0 ? `Packaging: +₹${itemParcelCost}` : 'Packaging included'
-                                                            : packed ? `+₹${itemParcelCost} packaging` : 'Not packed'}
+                                                        {costLabel}
                                                     </p>
                                                 </div>
                                                 {isMainCourse ? (
@@ -410,20 +448,39 @@ export default function CartPage() {
                                     <span>₹{mainCourseParcel}</span>
                                 </div>
                             )}
-                            {otherParcel > 0 && (
+                            {containerParcel > 0 && (
                                 <div className="flex justify-between text-sm text-gray-600">
-                                    <span>Other Items Packaging</span>
-                                    <span>₹{otherParcel}</span>
+                                    <span>Container Packaging</span>
+                                    <span>₹{containerParcel}</span>
+                                </div>
+                            )}
+                            {bagParcel > 0 && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                    <span>Bag Packaging</span>
+                                    <span>₹{bagParcel}</span>
+                                </div>
+                            )}
+                            {dailyRegularsParcel > 0 && (
+                                <div className="flex justify-between text-sm text-gray-600">
+                                    <span>Extras Packaging</span>
+                                    <span>₹{dailyRegularsParcel}</span>
                                 </div>
                             )}
                             <div className="flex justify-between text-sm text-gray-600">
                                 <span>Platform Convenience Charges</span>
                                 <span>₹{platformCharges}</span>
                             </div>
+                            <div className="flex justify-between text-sm text-gray-600">
+                                <span>Payment Gateway Fee</span>
+                                <span>₹{gatewayFee.toFixed(2)}</span>
+                            </div>
                             <div className="flex justify-between items-center pt-2">
                                 <span className="text-base font-bold text-gray-900">Total</span>
-                                <span className="text-2xl font-bold text-gray-900">₹{finalTotal}</span>
+                                <span className="text-2xl font-bold text-gray-900">₹{finalTotal.toFixed(2)}</span>
                             </div>
+                            <p className="text-[11px] text-gray-500 leading-snug pt-2">
+                                Note: Kanteen does not profit from the Payment Gateway Fee. This 100% covers the mandatory processing and tax charges levied by our online payment provider, ensuring you can pay securely online.
+                            </p>
                         </div>
                     </div>
                     {/* Unavailable warning above button */}

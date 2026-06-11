@@ -1,12 +1,11 @@
 import webpush from 'web-push';
 import { getAdminDb } from '@/lib/firebase-admin';
 
-// Configure VAPID once on module load
-webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT ?? 'mailto:admin@mrckanteen.in',
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '',
-    process.env.VAPID_PRIVATE_KEY ?? ''
-);
+// VAPID is configured lazily inside sendOrderReadyNotification — see note there.
+// Configuring at module load means web-push validates the (possibly empty) key
+// during `next build`, which breaks App Hosting builds when the secret is
+// RUNTIME-only. The flag below ensures we still only configure once per process.
+let vapidConfigured = false;
 
 interface PushSubscriptionDoc {
     uid: string;
@@ -28,6 +27,15 @@ export async function sendOrderReadyNotification(
     if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
         console.warn('push-notifications: VAPID keys not configured — skipping');
         return;
+    }
+
+    if (!vapidConfigured) {
+        webpush.setVapidDetails(
+            process.env.VAPID_SUBJECT ?? 'mailto:admin@mrckanteen.in',
+            process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+            process.env.VAPID_PRIVATE_KEY,
+        );
+        vapidConfigured = true;
     }
 
     try {

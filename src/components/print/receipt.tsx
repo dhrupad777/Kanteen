@@ -72,7 +72,10 @@ export function Receipt({ job, showPrintButton = false, onPrint }: ReceiptProps)
                             {job.items.map((item, index) => (
                                 <tr key={index} className="align-top">
                                     <td className="pr-2 font-bold w-6">{item.quantity}x</td>
-                                    <td className="text-left leading-tight">{item.name}</td>
+                                    <td className="text-left leading-tight">
+                                        {item.name}
+                                        {item.wantParcel && <span className="font-bold text-xs ml-1">[P]</span>}
+                                    </td>
                                     <td className="text-right whitespace-nowrap pl-2">Rs.{(item.price * item.quantity).toFixed(0)}</td>
                                 </tr>
                             ))}
@@ -107,11 +110,14 @@ export function Receipt({ job, showPrintButton = false, onPrint }: ReceiptProps)
                 )}
 
                 {/* Order Type */}
-                {job.isParcel && (
-                    <div className="text-center font-bold text-sm my-1">
-                        *** PARCEL ***
-                    </div>
-                )}
+                {(() => {
+                    const parcelledCount = job.items.filter((i) => i.wantParcel).length;
+                    const allParcelled = parcelledCount > 0 && parcelledCount === job.items.length;
+                    const someParcelled = parcelledCount > 0 && parcelledCount < job.items.length;
+                    if (allParcelled) return <div className="text-center font-bold text-sm my-1">*** PARCEL ***</div>;
+                    if (someParcelled) return <div className="text-center font-bold text-sm my-1">*** MIXED ***</div>;
+                    return null;
+                })()}
 
                 {/* Timestamp */}
                 <div className="text-center text-[11px] mt-2">
@@ -169,8 +175,13 @@ export function generateReceiptText(job: PrintJob): string {
     if (job.customerName) {
         lines.push(`Name: ${job.customerName}`);
     }
-    if (job.isParcel) {
+    const txtParcelledCount = job.items.filter((i) => i.wantParcel).length;
+    const txtAllParcelled = txtParcelledCount > 0 && txtParcelledCount === job.items.length;
+    const txtSomeParcelled = txtParcelledCount > 0 && txtParcelledCount < job.items.length;
+    if (txtAllParcelled) {
         lines.push(center('** PARCEL ORDER **'));
+    } else if (txtSomeParcelled) {
+        lines.push(center('** MIXED ORDER **'));
     }
     lines.push(line());
 
@@ -179,7 +190,9 @@ export function generateReceiptText(job: PrintJob): string {
     lines.push(line('-'));
 
     job.items.forEach(item => {
-        const name = item.name.length > 20 ? item.name.slice(0, 17) + '...' : item.name.padEnd(20);
+        const parcelTag = item.wantParcel ? '[P]' : '';
+        const nameWithTag = `${item.name}${parcelTag ? ' ' + parcelTag : ''}`;
+        const name = nameWithTag.length > 20 ? nameWithTag.slice(0, 17) + '...' : nameWithTag.padEnd(20);
         const qty = String(item.quantity).padStart(3);
         const price = `Rs.${item.price.toFixed(0)}`.padStart(7);
         lines.push(`${name} ${qty} ${price}`);

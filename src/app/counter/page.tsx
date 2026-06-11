@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
     Loader2, Search, Save, ChevronDown, ChevronUp, AlertTriangle,
-    ArrowLeft, RotateCcw, LogOut, Power, Trash2
+    ArrowLeft, RotateCcw, LogOut, Power, Trash2, Clock
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -49,11 +49,23 @@ export default function CounterPage() {
     // Online ordering toggle (controls /student page)
     const [kitchenActive, setKitchenActive] = useState(true);
     const [togglingKitchen, setTogglingKitchen] = useState(false);
+    // 24/7 override — when ON, the 8:00 AM – 8:45 PM gate is bypassed
+    const [kitchen24x7, setKitchen24x7] = useState(false);
+    const [toggling24x7, setToggling24x7] = useState(false);
 
     useEffect(() => {
         const unsub = onSnapshot(
             doc(db, 'canteen_state', 'settings'),
-            (snap) => { setKitchenActive(snap.exists() ? snap.data().studentOrderingEnabled !== false : true); },
+            (snap) => {
+                if (snap.exists()) {
+                    const data = snap.data();
+                    setKitchenActive(data.studentOrderingEnabled !== false);
+                    setKitchen24x7(data.kitchen24x7 === true);
+                } else {
+                    setKitchenActive(true);
+                    setKitchen24x7(false);
+                }
+            },
             () => { /* keep current state on error — counter toggle still works via setDoc */ },
         );
         return () => unsub();
@@ -75,6 +87,27 @@ export default function CounterPage() {
             toast({ title: 'Failed to update', variant: 'destructive' });
         } finally {
             setTogglingKitchen(false);
+        }
+    };
+
+    const toggle24x7 = async () => {
+        setToggling24x7(true);
+        const next = !kitchen24x7;
+        try {
+            await setDoc(doc(db, 'canteen_state', 'settings'), {
+                kitchen24x7: next,
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+            toast({
+                title: next ? 'Kitchen open 24/7' : 'Kitchen hours restored',
+                description: next
+                    ? 'Students can order at any time.'
+                    : 'Ordering limited to 8:00 AM – 8:45 PM.',
+            });
+        } catch {
+            toast({ title: 'Failed to update', variant: 'destructive' });
+        } finally {
+            setToggling24x7(false);
         }
     };
 
@@ -311,6 +344,24 @@ export default function CounterPage() {
                                 : <Power className="h-3 w-3" />
                             }
                             <span className="hidden sm:inline">{kitchenActive ? 'Online: Active' : 'Online: Off'}</span>
+                        </button>
+                        {/* 24/7 override toggle */}
+                        <button
+                            onClick={toggle24x7}
+                            disabled={toggling24x7}
+                            title={kitchen24x7 ? 'Limit ordering to 8:00 AM – 8:45 PM' : 'Open kitchen 24/7 (bypass hours)'}
+                            className={cn(
+                                "inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-3 py-1.5 border transition-all",
+                                kitchen24x7
+                                    ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                                    : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                            )}
+                        >
+                            {toggling24x7
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Clock className="h-3 w-3" />
+                            }
+                            <span className="hidden sm:inline">{kitchen24x7 ? '24/7' : '8–8:45'}</span>
                         </button>
                         <Button
                             variant="ghost"

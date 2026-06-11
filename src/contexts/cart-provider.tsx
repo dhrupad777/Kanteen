@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from "react";
 import { CartItem, MenuItem } from "@/types/menu-item";
+import type { CheckoutItem } from "@/types";
+import { isNoParcelCategory } from "@/lib/parcel-categories";
 
 const CART_STORAGE_KEY = "kanteen-cart";
 const MAX_CART_ITEMS = 50; // Maximum number of items in cart
@@ -54,20 +56,31 @@ function cartReducer(state: CartState, action: CartAction): CartState {
                 return state;
             }
 
-            return {
-                ...state,
-                items: [
-                    ...state.items,
-                    {
-                        itemId: item.id,
-                        name: item.name,
-                        price: item.price,
-                        qty: 1,
-                        parcelCharge: item.parcelCharge,
-                        category: item.category,
-                    },
-                ],
-            };
+            {
+                // When adding a daily_menu item, auto-enable parcel on existing daily_regulars
+                const prevItems = item.category === 'daily_menu'
+                    ? state.items.map(i =>
+                        i.category === 'daily_regulars' && !i.wantParcel
+                            ? { ...i, wantParcel: true }
+                            : i
+                    )
+                    : state.items;
+
+                return {
+                    ...state,
+                    items: [
+                        ...prevItems,
+                        {
+                            itemId: item.id,
+                            name: item.name,
+                            price: item.price,
+                            qty: 1,
+                            parcelCharge: item.parcelCharge,
+                            category: item.category,
+                        },
+                    ],
+                };
+            }
         }
 
         case "REMOVE_ITEM":
@@ -105,7 +118,9 @@ function cartReducer(state: CartState, action: CartAction): CartState {
             return {
                 ...state,
                 items: state.items.map((i) =>
-                    i.itemId === action.payload && i.category !== 'daily_menu'
+                    i.itemId === action.payload
+                        && i.category !== 'daily_menu'
+                        && !isNoParcelCategory(i.category)
                         ? { ...i, wantParcel: !i.wantParcel }
                         : i
                 ),
@@ -119,14 +134,6 @@ function cartReducer(state: CartState, action: CartAction): CartState {
     }
 }
 
-// Checkout items format for Razorpay
-interface CheckoutItem {
-    itemId: string;
-    name: string;
-    qty: number;
-    price: number;
-}
-
 // Context type
 interface CartContextType {
     items: CartItem[];
@@ -135,10 +142,6 @@ interface CartContextType {
     totalPrice: number;
     /** True when the cart contains at least one daily-menu item (parcel must be forced ON). */
     hasDailyItems: boolean;
-    /** Sum of per-item parcel surcharges for all items that carry one (daily_menu items). */
-    specialParcelCharge: number;
-    /** True when the cart contains at least one non-daily-menu item. */
-    hasNormalItems: boolean;
     addItem: (item: MenuItem) => void;
     removeItem: (itemId: string) => void;
     increment: (itemId: string) => void;
@@ -213,9 +216,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     // Computed values
     const hasDailyItems = state.items.some(item => item.category === 'daily_menu');
-    const specialParcelCharge = state.items.reduce((sum, item) =>
-        sum + (item.parcelCharge ?? 0) * item.qty, 0);
-    const hasNormalItems = state.items.some(item => item.category !== 'daily_menu');
     const totalItems = state.items.reduce((sum, item) => sum + item.qty, 0);
     const totalPrice = state.items.reduce((sum, item) => {
         if (!item.price || isNaN(item.price)) {
@@ -256,6 +256,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             name: item.name,
             qty: item.qty,
             price: item.price,
+            wantParcel: item.category === 'daily_menu' ? true : !!item.wantParcel,
         }));
     }, [state.items]);
 
@@ -275,8 +276,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 totalItems,
                 totalPrice,
                 hasDailyItems,
-                specialParcelCharge,
-                hasNormalItems,
                 addItem,
                 removeItem,
                 increment,

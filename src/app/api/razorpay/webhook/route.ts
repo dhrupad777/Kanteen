@@ -208,19 +208,19 @@ export async function POST(request: NextRequest) {
                     nextToken = counterData?.nextOnlineToken ?? 201;
 
                     if (nextToken > 999) {
-                        console.error('Webhook: Token limit reached for order:', orderId);
-                        nextToken = 999;
+                        // Mirror verify-payment: refuse to assign a token rather than
+                        // clamp to 999 (which would let multiple orders share the same token).
+                        // Order stays pending; manager will see and handle manually.
+                        throw new Error('ONLINE_ORDERS_FULL');
                     }
                 }
 
                 // Increment counter
-                if (nextToken < 999) {
-                    transaction.set(counterRef, {
-                        nextOnlineToken: nextToken + 1,
-                        dayKey: dateKey,
-                        updatedAt: FieldValue.serverTimestamp(),
-                    }, { merge: true });
-                }
+                transaction.set(counterRef, {
+                    nextOnlineToken: nextToken + 1,
+                    dayKey: dateKey,
+                    updatedAt: FieldValue.serverTimestamp(),
+                }, { merge: true });
 
                 // ====== GENERATE SECURE OTP ======
                 const otp = generateSecureOTP();
@@ -240,6 +240,7 @@ export async function POST(request: NextRequest) {
                     token: nextToken,
                     otpHash: otpHash,
                     otpSalt: otpSalt,
+                    secretOtp: otp,
                     otpExpiresAt: otpExpiresAt,
                     otpAttempts: 0,
                     dateKey: dateKey,

@@ -62,7 +62,7 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
 
             toast({
                 title: "OTP Regenerated",
-                description: `Your new OTP is ${data.otp}. Valid for 30 minutes.`,
+                description: `Your new OTP is ${data.otp}. Valid for 45 minutes.`,
             });
 
             // Force re-render by closing and reopening
@@ -114,16 +114,22 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
                                 </div>
                             ))}
                         </div>
-                        {order.isParcel && (
+                        {order.isParcel && (order.parcelCharge ?? 0) > 0 && (
                             <div className="flex justify-between items-center bg-amber-50 p-2 rounded-lg border border-amber-200">
                                 <span className="text-sm font-medium text-amber-900">Parcel Charges</span>
-                                <span className="font-mono font-bold text-sm text-amber-900">₹5</span>
+                                <span className="font-mono font-bold text-sm text-amber-900">₹{order.parcelCharge}</span>
                             </div>
                         )}
-                        {order.platformCharges !== undefined && (
+                        {order.platformCharges !== undefined && order.platformCharges > 0 && (
                             <div className="flex justify-between items-center bg-blue-50 p-2 rounded-lg border border-blue-200">
                                 <span className="text-sm font-medium text-blue-900">Platform Convenience Charges</span>
                                 <span className="font-mono font-bold text-sm text-blue-900">₹{order.platformCharges}</span>
+                            </div>
+                        )}
+                        {order.paymentGatewayFee !== undefined && order.paymentGatewayFee > 0 && (
+                            <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border border-gray-200">
+                                <span className="text-sm font-medium text-gray-700">Payment Gateway Fee</span>
+                                <span className="font-mono font-bold text-sm text-gray-700">₹{order.paymentGatewayFee.toFixed(2)}</span>
                             </div>
                         )}
                     </div>
@@ -132,8 +138,13 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
 
                     <div className="flex justify-between items-center px-2">
                         <span className="text-lg font-black uppercase tracking-tight">Total Payment</span>
-                        <span className="text-2xl font-mono font-black text-primary">₹{order.totalPrice}</span>
+                        <span className="text-2xl font-mono font-black text-primary">₹{order.totalPrice.toFixed(2)}</span>
                     </div>
+                    {order.paymentGatewayFee !== undefined && order.paymentGatewayFee > 0 && (
+                        <p className="text-[10px] text-muted-foreground leading-snug px-2">
+                            Note: Kanteen does not profit from the Payment Gateway Fee. This 100% covers the mandatory processing and tax charges levied by our online payment provider, ensuring you can pay securely online.
+                        </p>
+                    )}
 
                     {/* OTP Section - Only shown when order is Ready */}
                     {isOnlineOrder && order.status === 'Ready' && (

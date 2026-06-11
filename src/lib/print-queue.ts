@@ -15,7 +15,7 @@ export type PrintJobStatus = 'queued' | 'printing' | 'completed' | 'failed' | 'd
 export interface PrintJobPayload {
     orderId: string;
     token: number;
-    items: Array<{ name: string; qty: number }>;
+    items: Array<{ name: string; qty: number; wantParcel?: boolean }>;
     totalPrice: number;
     parcelCharge: number;
     studentName?: string;

@@ -210,10 +210,11 @@ export function usePrinter() {
             const qty = item.qty || item.quantity || 1;
             const unitPrice = item.price || 0;
             const lineTotal = unitPrice * qty;
+            const parcelTag = item.wantParcel ? ' [P]' : '';
 
-            // Line 1: qty + name — double-height + bold for easy reading
+            // Line 1: qty + name + [P] if parcelled — double-height + bold for easy reading
             r += ESCPOS.BOLD_ON + ESCPOS.DOUBLE_HEIGHT;
-            r += `${qty}x ${item.name || ''}\n`;
+            r += `${qty}x ${item.name || ''}${parcelTag}\n`;
             r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
 
             // Line 2: price right-aligned in normal size (only if price is known)
@@ -274,11 +275,21 @@ export function usePrinter() {
             r += divider();
         }
 
-        // ── PARCEL / ONLINE-ORDER — large, unmissable ─────────────
+        // ── Order type banner — large, unmissable ─────────────
         r += divider('=');
         r += ESCPOS.ALIGN_CENTER;
         r += ESCPOS.DOUBLE_SIZE + ESCPOS.BOLD_ON;
-        r += (job.isParcel || job.type === 'takeaway') ? 'PARCEL\n' : 'ONLINE-ORDER\n';
+        const itemsList = job.items || [];
+        const parcelledCount = itemsList.filter((i: any) => i.wantParcel).length;
+        const allParcelled = parcelledCount > 0 && parcelledCount === itemsList.length;
+        const someParcelled = parcelledCount > 0 && parcelledCount < itemsList.length;
+        if (job.type === 'takeaway' || allParcelled) {
+            r += 'PARCEL\n';
+        } else if (someParcelled) {
+            r += 'MIXED\n';
+        } else {
+            r += 'ONLINE-ORDER\n';
+        }
         r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
         r += divider('=');
 

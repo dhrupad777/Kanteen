@@ -10,7 +10,23 @@
       "Bash(git commit:*)",
       "Bash(node scripts/test-order-flow.cjs:*)",
       "Bash(node scripts/test-crypto-local.cjs:*)",
-      "Bash(firebase deploy:*)"
+      "Bash(firebase deploy:*)",
+      "Bash(git -C /c/Kanteen-1 ls-files public/)",
+      "Bash(git -C /c/Kanteen-1 status --short)",
+      "Bash(git -C /c/Kanteen-1 log --oneline -5 -- \"src/app/\\(dashboards\\)/student/page.tsx\" public/)",
+      "Bash(git -C /c/Kanteen-1 config --get core.ignorecase)",
+      "Bash(git -C c:/Kanteen-1 status --short public/RedBull.jpeg \"src/app/\\(dashboards\\)/student/page.tsx\")",
+      "Bash(git -C c:/Kanteen-1 ls-files public/)",
+      "Bash(git -C c:/Kanteen-1 log -1 --format=\"%h %s\")",
+      "Bash(git -C c:/Kanteen-1 diff -- \"src/app/\\(dashboards\\)/student/page.tsx\")",
+      "Bash(git -C c:/Kanteen-1 add public/RedBull.jpeg \"src/app/\\(dashboards\\)/student/page.tsx\")",
+      "Bash(git -C c:/Kanteen-1 status --short)",
+      "Bash(git -C c:/Kanteen-1 ls-files --stage -- public/RedBull.jpeg public/Redbull.jpeg public/redbull.jpeg)",
+      "Bash(git -C c:/Kanteen-1 commit -m ' *)",
+      "Bash(git -C c:/Kanteen-1 push origin main)",
+      "Bash(Get-Content \"src/lib/parcel-calc.ts\")",
+      "Bash(Write-Output \"---\")",
+      "Bash(Get-Content \"src/lib/payment-fee.ts\")"
     ]
   }
 }

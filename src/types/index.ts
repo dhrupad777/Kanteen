@@ -8,7 +8,12 @@ export interface Order {
   studentId: string;
   items: { name: string; quantity: number; price: number }[];
   totalPrice: number;
+  /** Target revenue (items + parcel + platform charges) — what Kanteen nets. */
+  subtotal?: number;
+  /** Grossed-up Razorpay fee charged to the customer (~2.36% of gross). */
+  paymentGatewayFee?: number;
   isParcel?: boolean;
+  parcelCharge?: number;
   platformCharges?: number;
   note?: string;
   token: number;
@@ -101,6 +106,8 @@ export interface CheckoutItem {
   name: string;
   qty: number;
   price: number;
+  /** Whether the student wants this item parcelled. daily_menu items are always true. */
+  wantParcel?: boolean;
 }
 
 // API Request/Response types
@@ -151,7 +158,7 @@ export interface PrintJob {
   id: string;
   orderId: string;
   token: number;
-  items: { name: string; quantity: number; price: number }[];
+  items: { name: string; quantity: number; price: number; wantParcel?: boolean }[];
   totalPrice: number;
   customerName?: string;
   customerEmail?: string;
@@ -171,7 +178,7 @@ export interface PrintQueueResponse {
 export interface AddPrintJobRequest {
   orderId: string;
   token: number;
-  items: { name: string; quantity: number; price: number }[];
+  items: { name: string; quantity: number; price: number; wantParcel?: boolean }[];
   totalPrice: number;
   customerName?: string;
   customerEmail?: string;

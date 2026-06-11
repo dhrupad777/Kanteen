@@ -229,6 +229,7 @@ export async function POST(request: NextRequest) {
                 token: nextToken,
                 otpHash,
                 otpSalt,
+                secretOtp: otp,
                 otpExpiresAt,
                 otpAttempts: 0,
                 dateKey: dateKey,
@@ -240,7 +241,7 @@ export async function POST(request: NextRequest) {
             enqueuePrintJobTransaction(transaction, orderId, {
                 orderId,
                 token: nextToken,
-                items: orderData.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
+                items: orderData.items.map((item: any) => ({ name: item.name, qty: item.quantity, wantParcel: item.wantParcel ?? false })),
                 totalPrice: orderData.totalPrice || 0,
                 parcelCharge: orderData.parcelCharge || 0,
                 studentName: orderData.userName || undefined,

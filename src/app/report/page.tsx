@@ -1,14 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/hooks/use-staff-auth";
 import { ReportsManager } from "@/components/reports-manager";
 import { OrderTracker } from "@/components/order-tracker";
 import { OrderCleanup } from "@/components/order-cleanup";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, BarChart3, LogOut, ShieldAlert, UtensilsCrossed, ChefHat, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
 /**
  * /report — Owner-only business reports.
@@ -22,6 +27,40 @@ import Link from "next/link";
  */
 export default function ReportPage() {
     const { loading, isAuthenticated, isOwner, email, signOutStaff } = useStaffAuth();
+    const { toast } = useToast();
+
+    // Online ordering toggle — same Firestore flag as /counter, mirrored here for owner convenience.
+    const [orderingEnabled, setOrderingEnabled] = useState<boolean | null>(null);
+    const [togglingOrdering, setTogglingOrdering] = useState(false);
+
+    useEffect(() => {
+        const unsub = onSnapshot(
+            doc(db, 'canteen_state', 'settings'),
+            (snap) => setOrderingEnabled(snap.exists() ? snap.data().studentOrderingEnabled !== false : true),
+            () => setOrderingEnabled(true),
+        );
+        return () => unsub();
+    }, []);
+
+    const toggleOrdering = async () => {
+        if (orderingEnabled === null) return;
+        setTogglingOrdering(true);
+        const next = !orderingEnabled;
+        try {
+            await setDoc(doc(db, 'canteen_state', 'settings'), {
+                studentOrderingEnabled: next,
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+            toast({
+                title: next ? 'Online Ordering Resumed' : 'Online Ordering Paused',
+                description: next ? 'Students can now place orders.' : 'The student page now shows "Not taking orders, at the moment".',
+            });
+        } catch {
+            toast({ title: 'Failed to update', variant: 'destructive' });
+        } finally {
+            setTogglingOrdering(false);
+        }
+    };
 
     if (loading || !isAuthenticated) {
         return (
@@ -105,6 +144,26 @@ export default function ReportPage() {
             </header>
 
             <main className="max-w-5xl mx-auto px-4 py-6">
+                {/* Online ordering toggle — owner can pause/resume student ordering instantly */}
+                <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black tracking-tight">
+                            Online Ordering {orderingEnabled === null ? '' : orderingEnabled ? '· Active' : '· Paused'}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            {orderingEnabled === false
+                                ? 'Students see "Not taking orders, at the moment" on /student.'
+                                : 'Students can place orders from /student.'}
+                        </p>
+                    </div>
+                    <Switch
+                        checked={orderingEnabled === true}
+                        onCheckedChange={toggleOrdering}
+                        disabled={orderingEnabled === null || togglingOrdering}
+                        aria-label="Toggle online ordering"
+                    />
+                </div>
+
                 <Tabs defaultValue="reports" className="w-full">
                     <TabsList className="grid w-full max-w-lg grid-cols-3 bg-slate-200/50 p-1 mb-6 rounded-xl">
                         <TabsTrigger value="reports" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">Business Reports</TabsTrigger>
