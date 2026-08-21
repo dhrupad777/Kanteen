@@ -2,13 +2,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
 import { Order, OrderStatus } from '@/types';
 import { db } from '@/lib/firebase';
-import { collection, doc, addDoc, updateDoc, onSnapshot, query, where, serverTimestamp, Timestamp, deleteDoc, limit, runTransaction, getDoc, setDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, Timestamp, limit } from "firebase/firestore";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { checkManagerAllowlist } from "@/lib/auth";
+import { normalizeOrderCore } from "@/lib/order-normalize";
 
 interface OrderContextType {
   orders: Order[];
@@ -94,6 +95,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       const data = await response.json();
       const fetchedOrders: Order[] = data.orders.map((o: any) => ({
         ...o,
+        ...normalizeOrderCore(o.id, o),
         createdAt: o.createdAt ? new Date(o.createdAt) : new Date(0),
       }));
       fetchedOrders.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
@@ -126,25 +128,13 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           }
           const data = doc.data();
           ordersMap.set(doc.id, {
-            id: doc.id,
-            studentId: data.studentId,
-            items: data.items,
-            status: data.status,
-            token: data.token,
+            ...normalizeOrderCore(doc.id, data),
             otpHash: data.otpHash,
             // Only expose the plaintext OTP to the order's owner.
             // Firestore rules allow any auth'd user to read Preparing/Ready orders
             // (for the public board), but secretOtp must never be shown for other users' orders.
             secretOtp: data.studentId === user?.uid ? data.secretOtp : undefined,
-            totalPrice: data.totalPrice,
-            isParcel: data.isParcel,
-            platformCharges: data.platformCharges,
-            note: data.note,
             createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
-            dateKey: data.dateKey,
-            kitchen: data.kitchen,
-            userEmail: data.userEmail,
-            userName: data.userName,
           });
         }
       });
@@ -191,7 +181,11 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           const data = await response.json();
           publicMap.clear();
           (data.orders as any[]).forEach((o) => {
-            publicMap.set(o.id, { ...o, createdAt: o.createdAt ? new Date(o.createdAt) : new Date(0) });
+            publicMap.set(o.id, {
+              ...o,
+              ...normalizeOrderCore(o.id, o),
+              createdAt: o.createdAt ? new Date(o.createdAt) : new Date(0),
+            });
           });
           rebuildAndSet();
         } catch {
@@ -217,22 +211,10 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           } else {
             const d = change.doc.data();
             privateMap.set(change.doc.id, {
-              id: change.doc.id,
-              studentId: d.studentId,
-              items: d.items,
-              status: d.status,
-              token: d.token,
+              ...normalizeOrderCore(change.doc.id, d),
               otpHash: d.otpHash,
               secretOtp: d.secretOtp, // own order — safe to expose
-              totalPrice: d.totalPrice,
-              isParcel: d.isParcel,
-              platformCharges: d.platformCharges,
-              note: d.note,
               createdAt: d.createdAt ? (d.createdAt as Timestamp).toDate() : new Date(),
-              dateKey: d.dateKey,
-              kitchen: d.kitchen,
-              userEmail: d.userEmail,
-              userName: d.userName,
             });
           }
         });

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { CreateRazorpayOrderResponse, VerifyPaymentResponse } from '@/types';
+import { savePendingPayment, updatePendingPayment, clearPendingPayment } from '@/lib/pending-payment';
 
 declare global {
     interface Window {
@@ -42,6 +43,11 @@ interface UseRazorpayOptions {
     /** Called when the modal closes with no confirmed result (e.g. UPI app switch).
      *  Payment may still be processing — keep UI in a "checking" state. */
     onPending?: () => void;
+    /** Called when the payment was very likely captured but we could not confirm it
+     *  (verify-payment failed, or the webhook never arrived in time). NEVER present this
+     *  as a failure — the money is probably gone. Keep the pay button disabled and let
+     *  `use-pending-payment` recover the token on the next page load. */
+    onUnconfirmed?: (message: string) => void;
 }
 
 interface RazorpayCheckoutOptions {
@@ -62,7 +68,7 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     // Tracks the active Firestore order listener so a second checkout call cleans up the first
-    const activeListenerRef = { current: null as (() => void) | null };
+    const activeListenerRef = useRef<(() => void) | null>(null);
 
     const loadRazorpayScript = useCallback((): Promise<boolean> => {
         return new Promise((resolve) => {
@@ -161,6 +167,10 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
             // 4. Create order on server
             const orderData = await createOrder(token, checkoutOptions);
 
+            // Record the in-flight payment before the modal opens. If the tab dies during
+            // a UPI app-switch, use-pending-payment replays this on the next load.
+            savePendingPayment({ orderId: orderData.orderId, ts: Date.now() });
+
             // 5. Open Razorpay checkout
             return new Promise((resolve, reject) => {
                 // Guard against duplicate resolution (handler vs Firestore listener)
@@ -176,6 +186,8 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     resolved = true;
                     unsubscribeFirestore?.();
                     activeListenerRef.current = null;
+                    // Confirmed — nothing left to recover on the next load
+                    clearPendingPayment();
 
                     // Cache payment preferences for next checkout
                     const toSave: SavedPayPref = {};
@@ -272,6 +284,15 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                         // This ensures handleSuccess actually calls onSuccess instead of
                         // short-circuiting, and keeps the Firestore listener alive as a
                         // fallback if verifyPayment throws.
+
+                        // Attach the signature before verifying. If this request never
+                        // completes, the recovery hook can re-POST it (verify-payment is
+                        // idempotent and returns the same token).
+                        updatePendingPayment(orderData.orderId, {
+                            razorpayOrderId: response.razorpay_order_id,
+                            razorpayPaymentId: response.razorpay_payment_id,
+                            razorpaySignature: response.razorpay_signature,
+                        });
                         try {
                             const freshToken = await getAuthToken();
                             const verifyResponse = await verifyPayment(
@@ -287,13 +308,15 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                                 paymentVpa: verifyResponse.paymentVpa,
                             });
                         } catch (err: any) {
-                            // verifyPayment failed — money may already be captured.
+                            // verifyPayment failed — money is very likely already captured.
+                            // Do NOT report this as a failure: the pending record survives,
+                            // so use-pending-payment re-verifies on the next load.
                             // Keep the Firestore listener alive so the webhook can still
                             // trigger handleSuccess if/when the payment settles server-side.
                             setLoading(false);
                             const errorMsg = err.message || 'Payment verification failed';
                             setError(errorMsg);
-                            options.onError?.(errorMsg);
+                            options.onUnconfirmed?.(errorMsg);
                             reject(new Error(errorMsg));
                         }
                     },
@@ -304,12 +327,17 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                                 if (lastFailureReason) {
                                     // Confirmed payment failure (payment.failed fired earlier)
                                     unsubscribeFirestore?.();
+                                    activeListenerRef.current = null;
+                                    // Definitively failed — nothing to recover
+                                    clearPendingPayment();
                                     options.onError?.(lastFailureReason);
                                     reject(new Error(lastFailureReason));
                                 } else if (Date.now() - modalOpenTime < 5000) {
                                     // Dismissed within 5 s of opening — user clicked X before
                                     // initiating any payment, so cancel immediately.
                                     unsubscribeFirestore?.();
+                                    activeListenerRef.current = null;
+                                    clearPendingPayment();
                                     options.onCancel?.();
                                     reject(new Error('Payment cancelled'));
                                 } else {
@@ -319,15 +347,19 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                                     // Razorpay handler — but the webhook will update Firestore.
                                     // Keep the Firestore listener alive and wait for it.
                                     options.onPending?.();
-                                    // Auto-cancel after 2 minutes if the webhook never arrives.
+                                    // Give up waiting after 3 minutes — but this is NOT a
+                                    // cancellation. The payment may well have gone through;
+                                    // the pending record stays so the recovery hook can
+                                    // surface the token on the next load.
                                     setTimeout(() => {
                                         if (!resolved) {
                                             resolved = true;
                                             unsubscribeFirestore?.();
-                                            options.onCancel?.();
-                                            reject(new Error('Payment timed out'));
+                                            activeListenerRef.current = null;
+                                            options.onUnconfirmed?.('Still confirming your payment');
+                                            reject(new Error('Payment confirmation timed out'));
                                         }
-                                    }, 2 * 60 * 1000);
+                                    }, 3 * 60 * 1000);
                                     // Do NOT reject here — Firestore listener owns the resolve.
                                 }
                             }

@@ -5,6 +5,7 @@ import { useStaffAuth } from "@/hooks/use-staff-auth";
 import { ReportsManager } from "@/components/reports-manager";
 import { OrderTracker } from "@/components/order-tracker";
 import { OrderCleanup } from "@/components/order-cleanup";
+import { FeedbackList } from "@/components/feedback-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -165,9 +166,10 @@ export default function ReportPage() {
                 </div>
 
                 <Tabs defaultValue="reports" className="w-full">
-                    <TabsList className="grid w-full max-w-lg grid-cols-3 bg-slate-200/50 p-1 mb-6 rounded-xl">
+                    <TabsList className="grid w-full max-w-2xl grid-cols-4 bg-slate-200/50 p-1 mb-6 rounded-xl">
                         <TabsTrigger value="reports" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">Business Reports</TabsTrigger>
                         <TabsTrigger value="tracker" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">Order Tracker</TabsTrigger>
+                        <TabsTrigger value="feedback" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">Feedback</TabsTrigger>
                         <TabsTrigger value="cleanup" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-red-600 data-[state=active]:shadow-sm gap-1.5">
                             <Trash2 className="h-3.5 w-3.5" />
                             Cancel Orders
@@ -180,6 +182,10 @@ export default function ReportPage() {
 
                     <TabsContent value="tracker" className="m-0">
                         <OrderTracker />
+                    </TabsContent>
+
+                    <TabsContent value="feedback" className="m-0">
+                        <FeedbackList />
                     </TabsContent>
 
                     <TabsContent value="cleanup" className="m-0">

@@ -119,6 +119,19 @@ export default function CartPage() {
             });
             // processing stays true → button stays disabled while we wait for webhook
         },
+        onUnconfirmed: () => {
+            // The payment likely went through, we just couldn't confirm it here. Never say
+            // "failed" — and never re-enable the button, or the student can pay twice.
+            // The cart is deliberately NOT cleared: if the payment turns out not to have
+            // happened, they keep their items. usePendingPayment clears it on /student
+            // once it actually confirms the order.
+            toast({
+                title: "Confirming your payment",
+                description: "Your token will appear on your dashboard shortly.",
+            });
+            // processing stays true → button stays disabled
+            router.replace('/student');
+        },
     });
 
     // Parcel charge breakdown using the shared calculation

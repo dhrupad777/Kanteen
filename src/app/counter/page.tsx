@@ -23,6 +23,7 @@ import { MenuCatalogEditor } from "@/components/menu-catalog-editor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OrderTracker } from "@/components/order-tracker";
 import { OrderCleanup } from "@/components/order-cleanup";
+import { FeedbackList } from "@/components/feedback-list";
 
 const CATEGORY_EMOJI: Record<MenuCategory, string> = {
     tea_beverage: "☕",
@@ -378,10 +379,11 @@ export default function CounterPage() {
 
             <main className="max-w-3xl mx-auto px-3 sm:px-4 py-4 pb-32">
                 <Tabs defaultValue="management" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4 bg-gray-200/50 p-1 mb-6 rounded-xl">
+                    <TabsList className="grid w-full grid-cols-5 bg-gray-200/50 p-1 mb-6 rounded-xl">
                         <TabsTrigger value="management" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm text-xs sm:text-sm">Counter</TabsTrigger>
                         <TabsTrigger value="catalog" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm text-xs sm:text-sm">Menu Items</TabsTrigger>
                         <TabsTrigger value="tracker" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm text-xs sm:text-sm">Tracker</TabsTrigger>
+                        <TabsTrigger value="feedback" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm text-xs sm:text-sm">Feedback</TabsTrigger>
                         <TabsTrigger value="cleanup" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-red-600 data-[state=active]:shadow-sm text-xs sm:text-sm gap-1">
                             <Trash2 className="h-3.5 w-3.5" />Cancel
                         </TabsTrigger>
@@ -576,6 +578,9 @@ export default function CounterPage() {
                     </TabsContent>
                     <TabsContent value="tracker" className="m-0">
                         <OrderTracker />
+                    </TabsContent>
+                    <TabsContent value="feedback" className="m-0">
+                        <FeedbackList />
                     </TabsContent>
                     <TabsContent value="cleanup" className="m-0">
                         <OrderCleanup />

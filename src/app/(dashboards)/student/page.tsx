@@ -3,6 +3,8 @@
 import { useMemo, useEffect, useState, useCallback } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
+import { OrderErrorBoundary } from '@/components/order-error-boundary';
+import { FeedbackButton } from '@/components/feedback-button';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff, Bell, Smartphone, Share, Download, Wrench } from 'lucide-react';
@@ -18,10 +20,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { useOrderReadyAlert, playOrderChime } from '@/hooks/use-order-ready-alert';
 import { useInstallPrompt } from '@/hooks/use-install-prompt';
+import { usePendingPayment } from '@/hooks/use-pending-payment';
+import { useCart } from '@/contexts/cart-provider';
 
 export default function StudentDashboardPage() {
   const { orders, loading: ordersLoading } = useOrders();
   const { user, userProfile, loading: authLoading } = useAuth();
+  const { clearCart } = useCart();
 
   // In-app chime + vibration when order status → Ready
   useOrderReadyAlert(orders, user?.uid);
@@ -96,44 +101,69 @@ export default function StudentDashboardPage() {
 
   // Order confirmation popup state
   const [orderConfirmed, setOrderConfirmed] = useState<{ token: number; orderId: string } | null>(null);
-  const SUPPRESS_KEY = 'kanteen_suppress_order_popup';
 
   const dismissPopup = useCallback(() => {
     setOrderConfirmed(null);
     triggerEngagementPrompt();
   }, [triggerEngagementPrompt]);
 
-  const dismissAndSuppress = useCallback(() => {
-    localStorage.setItem(SUPPRESS_KEY, '1');
-    setOrderConfirmed(null);
+  // One-time cleanup: this key used to permanently suppress the token popup for anyone
+  // who tapped "Don't show this again". That button is gone — clear the flag so affected
+  // students see their tokens again.
+  useEffect(() => {
+    localStorage.removeItem('kanteen_suppress_order_popup');
   }, []);
 
   // Auth check removed - dashboard is public
 
   const loading = ordersLoading || authLoading;
 
-  // Check for order confirmation from payment redirect
+  // Recover a payment whose confirmation never reached us (tab discarded during a UPI
+  // app-switch, or the verify-payment response was lost on a bad connection). The cart is
+  // only cleared here, once the order is actually confirmed — an unconfirmed payment
+  // leaves it intact so the student doesn't lose their items if it never went through.
+  const handleRecoveredPayment = useCallback((result: { token: number; orderId: string }) => {
+    clearCart();
+    setOrderConfirmed(result);
+  }, [clearCart]);
+  usePendingPayment(handleRecoveredPayment);
+
+  // Check for order confirmation from payment redirect.
+  // Deliberately gated on the dashboard having painted: while `loading` is true the
+  // skeleton is showing, and arming the 8s auto-dismiss then would expire the popup
+  // before the student ever saw it on a slow connection.
+  const dashboardReady = !loading && orderingEnabled !== null;
   useEffect(() => {
+    if (!dashboardReady) return;
     const data = sessionStorage.getItem('orderConfirmed');
-    if (data) {
-      sessionStorage.removeItem('orderConfirmed');
-      // Skip popup if user has opted out
-      if (localStorage.getItem(SUPPRESS_KEY) === '1') return;
-      try {
-        setOrderConfirmed(JSON.parse(data));
-        // Auto-dismiss after 8 seconds, then show engagement prompt
-        const timer = setTimeout(() => {
-          setOrderConfirmed(null);
-          triggerEngagementPrompt();
-        }, 8000);
-        return () => clearTimeout(timer);
-      } catch (e) {
-        // malformed data — silently discard
-      }
+    if (!data) return;
+
+    let parsed: { token: number; orderId: string };
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      sessionStorage.removeItem('orderConfirmed'); // malformed — discard
+      return;
     }
+    // Only consume it once we know we can actually show it
+    if (typeof parsed?.token !== 'number') return;
+    sessionStorage.removeItem('orderConfirmed');
+    setOrderConfirmed(parsed);
+  }, [dashboardReady]);
+
+  // Auto-dismiss the popup 8 s after it becomes visible, then show the engagement prompt.
+  // Keyed on the popup itself so the recovered-payment path gets the same treatment, and
+  // so the 8 s progress bar in the popup stays in sync with the actual dismissal.
+  useEffect(() => {
+    if (!orderConfirmed || !dashboardReady) return;
+    const timer = setTimeout(() => {
+      setOrderConfirmed(null);
+      triggerEngagementPrompt();
+    }, 8000);
+    return () => clearTimeout(timer);
   // triggerEngagementPrompt intentionally omitted — stable enough, avoids re-running on every render
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [orderConfirmed, dashboardReady]);
 
   // Memoize filtered orders to prevent unnecessary recalculations
   const myActiveOrders = useMemo(() =>
@@ -244,13 +274,6 @@ export default function StudentDashboardPage() {
                     className="w-full py-3 rounded-2xl bg-orange-500 hover:bg-orange-600 active:scale-[0.98] text-white font-semibold text-sm transition-all"
                   >
                     Got it!
-                  </button>
-                  <button
-                    onClick={dismissAndSuppress}
-                    className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-2xl text-gray-400 hover:text-gray-600 hover:bg-gray-50 active:scale-[0.98] text-xs font-medium transition-all"
-                  >
-                    <BellOff className="w-3.5 h-3.5" />
-                    Don&apos;t show this again
                   </button>
                 </div>
               </div>
@@ -390,6 +413,10 @@ export default function StudentDashboardPage() {
             Hello, {userProfile?.name?.split(' ')[0] || user.displayName?.split(' ')[0] || ''}
           </h1>
 
+          {/* Right-hand actions — grouped so the header layout holds however many render */}
+          <div className="flex items-center gap-1 shrink-0">
+          <FeedbackButton />
+
           {/* Notification bell — only shown for logged-in users on supported browsers */}
           {supported && !iosNeedsInstall && permission !== 'denied' && (
             <button
@@ -426,6 +453,7 @@ export default function StudentDashboardPage() {
               <BellOff className="w-5 h-5 text-gray-300" />
             </span>
           )}
+          </div>
         </div>
       )}
 
@@ -565,10 +593,12 @@ function DashboardSection({
                 exit={{ opacity: 0, scale: 0.75, y: -8, transition: { duration: 0.25, ease: 'easeIn' } }}
                 className="relative group"
               >
-                <OrderCard
-                  order={order}
-                  role="student"
-                />
+                <OrderErrorBoundary label={order.token ? `#${order.token}` : order.id}>
+                  <OrderCard
+                    order={order}
+                    role="student"
+                  />
+                </OrderErrorBoundary>
               </motion.div>
             ))}
           </div>

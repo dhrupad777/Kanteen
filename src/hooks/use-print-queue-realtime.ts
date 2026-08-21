@@ -8,6 +8,7 @@ import { collection, query, where, orderBy, limit, onSnapshot, Timestamp } from 
 interface PrintJobItem {
     name: string;
     qty: number;
+    wantParcel?: boolean;
 }
 
 interface PrintJob {

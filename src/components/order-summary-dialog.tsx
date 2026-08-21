@@ -138,7 +138,7 @@ export function OrderSummaryDialog({ order, isOpen, onOpenChange }: OrderSummary
 
                     <div className="flex justify-between items-center px-2">
                         <span className="text-lg font-black uppercase tracking-tight">Total Payment</span>
-                        <span className="text-2xl font-mono font-black text-primary">₹{order.totalPrice.toFixed(2)}</span>
+                        <span className="text-2xl font-mono font-black text-primary">₹{(order.totalPrice ?? 0).toFixed(2)}</span>
                     </div>
                     {order.paymentGatewayFee !== undefined && order.paymentGatewayFee > 0 && (
                         <p className="text-[10px] text-muted-foreground leading-snug px-2">

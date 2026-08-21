@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "studio-1083756985-9d2c6"
+    "default": "studio-1083756985-9d2c6",
+    "KanteenMRCM": "studio-1083756985-9d2c6"
   },
   "targets": {
     "studio-1083756985-9d2c6": {

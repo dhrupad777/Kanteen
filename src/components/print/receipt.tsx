@@ -76,7 +76,7 @@ export function Receipt({ job, showPrintButton = false, onPrint }: ReceiptProps)
                                         {item.name}
                                         {item.wantParcel && <span className="font-bold text-xs ml-1">[P]</span>}
                                     </td>
-                                    <td className="text-right whitespace-nowrap pl-2">Rs.{(item.price * item.quantity).toFixed(0)}</td>
+                                    <td className="text-right whitespace-nowrap pl-2">Rs.{((item.price ?? 0) * item.quantity).toFixed(0)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -86,7 +86,7 @@ export function Receipt({ job, showPrintButton = false, onPrint }: ReceiptProps)
                 <div className="border-t border-dashed border-black my-1"></div>
                 <div className="flex justify-between font-bold text-sm">
                     <span>TOTAL</span>
-                    <span>Rs.{job.totalPrice.toFixed(2)}</span>
+                    <span>Rs.{(job.totalPrice ?? 0).toFixed(2)}</span>
                 </div>
 
                 {job.note && (
@@ -194,14 +194,14 @@ export function generateReceiptText(job: PrintJob): string {
         const nameWithTag = `${item.name}${parcelTag ? ' ' + parcelTag : ''}`;
         const name = nameWithTag.length > 20 ? nameWithTag.slice(0, 17) + '...' : nameWithTag.padEnd(20);
         const qty = String(item.quantity).padStart(3);
-        const price = `Rs.${item.price.toFixed(0)}`.padStart(7);
+        const price = `Rs.${(item.price ?? 0).toFixed(0)}`.padStart(7);
         lines.push(`${name} ${qty} ${price}`);
     });
 
     lines.push(line('='));
 
     // Total
-    lines.push(leftRight('TOTAL:', `Rs.${job.totalPrice.toFixed(2)}`));
+    lines.push(leftRight('TOTAL:', `Rs.${(job.totalPrice ?? 0).toFixed(2)}`));
     lines.push(line('='));
     lines.push('');
 

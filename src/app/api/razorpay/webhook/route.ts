@@ -5,6 +5,7 @@ import Razorpay from 'razorpay';
 import { verifyWebhookSignature, generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { enqueuePrintJobTransaction } from '@/lib/print-queue';
+import { sendOrderConfirmedNotification } from '@/lib/push-notifications';
 
 const CAMPUS_ID = 'default';
 const OTP_EXPIRY_MINUTES = 45;
@@ -259,6 +260,7 @@ export async function POST(request: NextRequest) {
                 return {
                     token: nextToken,
                     items: currentOrderData.items,
+                    studentId: currentOrderData.studentId,
                     userName: currentOrderData.userName,
                     userEmail: currentOrderData.userEmail,
                     note: currentOrderData.note,
@@ -277,7 +279,7 @@ export async function POST(request: NextRequest) {
                         enqueuePrintJobTransaction(tx, orderId, {
                             orderId,
                             token: confirmedResult.token,
-                            items: confirmedResult.items.map((item: any) => ({ name: item.name, qty: item.quantity })),
+                            items: confirmedResult.items.map((item: any) => ({ name: item.name, qty: item.quantity, wantParcel: item.wantParcel ?? false })),
                             totalPrice: confirmedResult.totalPrice || 0,
                             parcelCharge: confirmedResult.parcelCharge || 0,
                             studentName: confirmedResult.userName || undefined,
@@ -291,6 +293,18 @@ export async function POST(request: NextRequest) {
                     // Non-fatal: print job may already exist (created by verify-payment).
                     // Order is already confirmed. Log and move on.
                     console.error('Webhook: print job enqueue failed (non-fatal):', printErr?.message);
+                }
+
+                // This path rescues an order whose client never completed verify-payment —
+                // so the student has no browser tab waiting and this push is the only way
+                // they learn their token. Fire-and-forget; never affects the order.
+                if (confirmedResult.studentId) {
+                    sendOrderConfirmedNotification(
+                        orderId,
+                        confirmedResult.studentId,
+                        confirmedResult.token,
+                        confirmedResult.userName,
+                    ).catch(() => {});
                 }
             }
 

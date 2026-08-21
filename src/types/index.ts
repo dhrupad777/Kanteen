@@ -6,7 +6,7 @@ export type OrderStatus = 'pending' | 'PAID' | 'Preparing' | 'Ready' | 'Complete
 export interface Order {
   id: string;
   studentId: string;
-  items: { name: string; quantity: number; price: number }[];
+  items: { name: string; quantity: number; price: number; wantParcel?: boolean }[];
   totalPrice: number;
   /** Target revenue (items + parcel + platform charges) — what Kanteen nets. */
   subtotal?: number;
@@ -43,6 +43,23 @@ export interface UserProfile {
   role?: 'manager';
   photoURL?: string;
   updatedAt?: any;
+}
+
+/** General feedback from a signed-in student — not tied to any order.
+ *  Stored in `feedback/{autoId}`, written server-side only via POST /api/feedback. */
+export interface Feedback {
+  id: string;
+  /** Who left it — taken from the verified ID token, never the client. */
+  studentId: string;
+  userName: string;
+  userEmail: string;
+  /** Integer 1-5. */
+  rating: number;
+  /** What the feedback is about — one of FEEDBACK_TAGS in @/lib/feedback. */
+  tag: string;
+  /** Trimmed, max 500 chars. Required. */
+  comment: string;
+  createdAt: Date;
 }
 
 export interface DailyMenu {

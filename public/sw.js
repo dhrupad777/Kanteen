@@ -1,7 +1,10 @@
 // Kanteen Service Worker — push notifications + asset caching
 
-const STATIC_CACHE = 'kanteen-static-v4';
-const PAGE_CACHE   = 'kanteen-pages-v4';
+// Bumping these names is what purges stale caches: the activate handler below
+// deletes every cache not listed in KEEP_CACHES. Bump on any change to caching
+// behaviour so existing clients drop their old entries.
+const STATIC_CACHE = 'kanteen-static-v5';
+const PAGE_CACHE   = 'kanteen-pages-v5';
 const KEEP_CACHES  = [STATIC_CACHE, PAGE_CACHE];
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -37,24 +40,12 @@ self.addEventListener('fetch', (event) => {
     // Only handle GET requests from our origin
     if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-    // Next.js static bundles & optimized images — cache-first
-    // (immutable filenames, already have 1yr Cache-Control, SW adds redundancy
-    //  for low-storage devices that evict browser cache aggressively)
-    if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/_next/image/')) {
-        event.respondWith(
-            caches.match(request).then(cached => {
-                if (cached) return cached;
-                return fetch(request).then(res => {
-                    if (res.ok) {
-                        const clone = res.clone();
-                        caches.open(STATIC_CACHE).then(cache => cache.put(request, clone));
-                    }
-                    return res;
-                });
-            })
-        );
-        return;
-    }
+    // Next.js build output (/_next/static/, /_next/image/) is deliberately NOT
+    // cached here. Those files already ship `Cache-Control: max-age=31536000,
+    // immutable`, so the browser's own HTTP cache handles them well. Caching them
+    // in the SW as well added little and meant a stale asset could survive reloads
+    // indefinitely — which turned a one-off chunk error into an unrecoverable
+    // reload loop. Let these fall through to the network.
 
     // Public static assets (icons, manifest, sw itself) — cache-first
     if (url.pathname.startsWith('/icons/') || url.pathname === '/manifest.json') {
@@ -114,13 +105,20 @@ self.addEventListener('push', (event) => {
         renotify: true,
     };
 
+    // Only the "order ready" push should trigger the in-app chime. Order-confirmed
+    // pushes must stay silent in-app — the student is looking at the token popup.
+    // Older payloads carry no `kind`, so default to chiming.
+    const shouldChime = data.kind !== 'confirmed';
+
     event.waitUntil(
         Promise.all([
             self.registration.showNotification(title, options),
             // Tell open pages to play the in-app chime
             // (covers cases where OS notification sound is muted/blocked)
-            clients.matchAll({ type: 'window', includeUncontrolled: true })
-                .then(cs => cs.forEach(c => c.postMessage({ type: 'KANTEEN_ORDER_READY' }))),
+            shouldChime
+                ? clients.matchAll({ type: 'window', includeUncontrolled: true })
+                    .then(cs => cs.forEach(c => c.postMessage({ type: 'KANTEEN_ORDER_READY' })))
+                : Promise.resolve(),
         ])
     );
 });

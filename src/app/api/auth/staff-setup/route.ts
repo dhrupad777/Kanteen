@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, getAdminAuth } from '@/lib/firebase-admin';
+import { timingSafeEqual } from '@/lib/crypto-utils';
 
 /**
  * POST /api/auth/staff-setup
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     if (!expectedSecret) {
         return NextResponse.json({ error: 'STAFF_SETUP_SECRET env var not configured.' }, { status: 503 });
     }
-    if (secret !== expectedSecret) {
+    if (!secret || !timingSafeEqual(secret, expectedSecret)) {
         return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 

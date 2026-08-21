@@ -283,12 +283,12 @@ export function usePrinter() {
         const parcelledCount = itemsList.filter((i: any) => i.wantParcel).length;
         const allParcelled = parcelledCount > 0 && parcelledCount === itemsList.length;
         const someParcelled = parcelledCount > 0 && parcelledCount < itemsList.length;
-        if (job.type === 'takeaway' || allParcelled) {
+        if (allParcelled) {
             r += 'PARCEL\n';
         } else if (someParcelled) {
             r += 'MIXED\n';
         } else {
-            r += 'ONLINE-ORDER\n';
+            r += 'TAKE AWAY\n';
         }
         r += ESCPOS.NORMAL_SIZE + ESCPOS.BOLD_OFF;
         r += divider('=');

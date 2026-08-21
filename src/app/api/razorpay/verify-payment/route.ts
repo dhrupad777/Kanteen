@@ -6,6 +6,7 @@ import { rateLimit, getClientIP } from '@/lib/rate-limit';
 import { verifyRazorpaySignature, generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
 import { logAuditEvent, getUserAgent } from '@/lib/audit-logger';
 import { enqueuePrintJobTransaction } from '@/lib/print-queue';
+import { sendOrderConfirmedNotification } from '@/lib/push-notifications';
 import type { VerifyPaymentRequest, VerifyPaymentResponse } from '@/types';
 
 const CAMPUS_ID = 'default';
@@ -255,6 +256,8 @@ export async function POST(request: NextRequest) {
                 orderId: orderId,
                 token: nextToken,
                 alreadyProcessed: false,
+                studentId: orderData.studentId as string | undefined,
+                userName: orderData.userName as string | undefined,
             };
         });
 
@@ -281,6 +284,13 @@ export async function POST(request: NextRequest) {
                 razorpay_payment_id,
             },
         });
+
+        // Confirmation push — the only confirmation a student gets if the tab was closed
+        // or discarded before the in-app token popup could show. Fire-and-forget: a push
+        // failure must never affect the order, which is already committed.
+        if (result.studentId) {
+            sendOrderConfirmedNotification(result.orderId, result.studentId, result.token, result.userName).catch(() => {});
+        }
 
         const response: VerifyPaymentResponse = {
             success: true,

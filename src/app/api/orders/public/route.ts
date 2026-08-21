@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { normalizeOrderCore } from '@/lib/order-normalize';
 
 /**
  * Public API endpoint to fetch Ready and Preparing orders
@@ -22,35 +23,23 @@ export async function GET() {
             .limit(100)
             .get();
 
+        // This payload is polled every 5s by every visitor's dashboard, so a single
+        // malformed document here reaches every client. Normalize before it leaves
+        // the server — never ship undefined numerics to the UI.
+        const toPublicOrder = (doc: FirebaseFirestore.QueryDocumentSnapshot) => {
+            const data = doc.data();
+            // This endpoint is unauthenticated: drop the customer PII that
+            // normalizeOrderCore carries for the authenticated dashboards.
+            const { userEmail, userName, ...safe } = normalizeOrderCore(doc.id, data);
+            return {
+                ...safe,
+                createdAt: data.createdAt?.toDate()?.toISOString() ?? null,
+            };
+        };
+
         const orders = [
-            ...readySnapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    studentId: data.studentId,
-                    items: data.items,
-                    status: data.status,
-                    token: data.token,
-                    totalPrice: data.totalPrice,
-                    createdAt: data.createdAt?.toDate()?.toISOString() ?? null,
-                    dateKey: data.dateKey,
-                    kitchen: data.kitchen,
-                };
-            }),
-            ...preparingSnapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    studentId: data.studentId,
-                    items: data.items,
-                    status: data.status,
-                    token: data.token,
-                    totalPrice: data.totalPrice,
-                    createdAt: data.createdAt?.toDate()?.toISOString() ?? null,
-                    dateKey: data.dateKey,
-                    kitchen: data.kitchen,
-                };
-            }),
+            ...readySnapshot.docs.map(toPublicOrder),
+            ...preparingSnapshot.docs.map(toPublicOrder),
         ];
 
         return NextResponse.json({ orders });

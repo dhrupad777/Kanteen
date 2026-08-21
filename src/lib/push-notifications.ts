@@ -14,15 +14,14 @@ interface PushSubscriptionDoc {
 }
 
 /**
- * Sends a push notification to all devices subscribed for a given student.
- * Called server-side when an order is marked "Ready".
+ * Sends one push notification to every device subscribed for a given student.
  * Never throws — any error is logged and swallowed so the caller is unaffected.
  */
-export async function sendOrderReadyNotification(
+async function sendPushToStudent(
     orderId: string,
     studentId: string,
-    token: number,
-    studentName?: string
+    /** `kind` tells the service worker whether to trigger the in-app "order ready" chime. */
+    notification: { title: string; body: string; url: string; kind: 'ready' | 'confirmed' }
 ): Promise<void> {
     if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
         console.warn('push-notifications: VAPID keys not configured — skipping');
@@ -47,17 +46,7 @@ export async function sendOrderReadyNotification(
 
         if (snapshot.empty) return;
 
-        // Use first name if available: "Dhrupad your order 206 is ready!"
-        const firstName = studentName ? studentName.split(' ')[0] : null;
-        const title = firstName
-            ? `${firstName}, your order ${token} is ready! 🎉`
-            : `Order ${token} is ready! 🎉`;
-
-        const payload = JSON.stringify({
-            title,
-            body: 'Open Kanteen to see your pickup OTP',
-            url: '/student',
-        });
+        const payload = JSON.stringify(notification);
 
         const staleRefs: FirebaseFirestore.DocumentReference[] = [];
 
@@ -92,4 +81,45 @@ export async function sendOrderReadyNotification(
     } catch (err: any) {
         console.error('push-notifications: failed to send notification:', err?.message);
     }
+}
+
+/** Called server-side when an order is marked "Ready". */
+export async function sendOrderReadyNotification(
+    orderId: string,
+    studentId: string,
+    token: number,
+    studentName?: string
+): Promise<void> {
+    // Use first name if available: "Dhrupad, your order 206 is ready!"
+    const firstName = studentName ? studentName.split(' ')[0] : null;
+    return sendPushToStudent(orderId, studentId, {
+        title: firstName
+            ? `${firstName}, your order ${token} is ready! 🎉`
+            : `Order ${token} is ready! 🎉`,
+        body: 'Open Kanteen to see your pickup OTP',
+        url: '/student',
+        kind: 'ready',
+    });
+}
+
+/**
+ * Called server-side the moment a payment is confirmed and a token is assigned.
+ * This is the only confirmation a student receives if the browser tab was closed or
+ * discarded before the in-app token popup could be shown.
+ */
+export async function sendOrderConfirmedNotification(
+    orderId: string,
+    studentId: string,
+    token: number,
+    studentName?: string
+): Promise<void> {
+    const firstName = studentName ? studentName.split(' ')[0] : null;
+    return sendPushToStudent(orderId, studentId, {
+        title: firstName
+            ? `${firstName}, your token is ${token} ✅`
+            : `Order confirmed — your token is ${token} ✅`,
+        body: 'Payment received. We\'ll notify you when it\'s ready to collect.',
+        url: '/student',
+        kind: 'confirmed',
+    });
 }

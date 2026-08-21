@@ -53,6 +53,12 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
     }
 
+    function profileKeysAllowed() {
+      return request.resource.data.keys().hasOnly([
+        'uid', 'name', 'email', 'photoURL', 'createdAt', 'lastLoginAt', 'updatedAt'
+      ]);
+    }
+
     // ====== ORDERS COLLECTION ======
     match /orders/{orderId} {
       // Staff with token-based role can read all orders (collection queries work).
@@ -74,6 +80,17 @@ service cloud.firestore {
       
       // Admin or kitchen_manager can delete (for end-of-day order cleanup)
       allow delete: if isAdmin() || hasRole('kitchen_manager');
+    }
+
+    // ====== FEEDBACK ======
+    // General student feedback (not tied to an order). Written only via the
+    // Admin SDK (POST /api/feedback), which derives the submitter's identity
+    // from a verified ID token. isManagerLegacy is intentionally excluded —
+    // its exists() lookup makes Firestore deny the whole collection query
+    // (same caveat as /orders above).
+    match /feedback/{feedbackId} {
+      allow read: if isKitchenStaff();
+      allow write: if false; // Only via Admin SDK
     }
 
     // ====== ORDER COUNTERS ======
@@ -110,13 +127,19 @@ service cloud.firestore {
 
     // ====== STUDENT PROFILES ======
     match /students/{userId} {
-      allow create, update, read: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && profileKeysAllowed();
+      allow update: if isOwner(userId)
+        && onlyModifiesFields(['name', 'email', 'photoURL', 'lastLoginAt', 'updatedAt']);
       allow delete, list: if false;
     }
 
     // ====== USER PROFILES ======
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && profileKeysAllowed();
+      allow update: if isOwner(userId)
+        && onlyModifiesFields(['name', 'email', 'photoURL', 'lastLoginAt', 'updatedAt']);
       allow delete, list: if false;
     }
 
@@ -146,7 +169,10 @@ service cloud.firestore {
 
     // ====== MANAGER PROFILES ======
     match /managers/{userId} {
-      allow create, update, read: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && profileKeysAllowed();
+      allow update: if isOwner(userId)
+        && onlyModifiesFields(['name', 'email', 'photoURL', 'lastLoginAt', 'updatedAt']);
       allow delete, list: if false;
     }
 
@@ -166,6 +192,16 @@ service cloud.firestore {
 
     // ====== STAFF SESSIONS (reserved) ======
     match /staff_sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    // Web Push endpoints — written only via Admin SDK (/api/push/*)
+    match /push_subscriptions/{docId} {
+      allow read, write: if false;
+    }
+
+    // Default deny for any collection not listed above
+    match /{document=**} {
       allow read, write: if false;
     }
   }

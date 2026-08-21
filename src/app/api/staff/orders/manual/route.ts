@@ -65,7 +65,12 @@ export async function POST(request: NextRequest) {
         const normalized = normalizedStr;
         const docId = `manual-${normalized}-${Date.now()}`;
         const orderRef = adminDb.collection('orders').doc(docId);
+        const dateKey = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
+        // Coupon meals are pre-paid offline, so every charge field is 0 — but they must
+        // still be written. Firestore rules expose any Ready order to every signed-in user,
+        // so a partial order here renders on all dashboards, and a missing totalPrice
+        // crashes them (see order-summary-dialog).
         await orderRef.set({
             studentId: `student-${normalized}`,
             items: [{ name: 'Coupon Meal', quantity: 1, price: 0 }],
@@ -73,7 +78,16 @@ export async function POST(request: NextRequest) {
             token: couponNum,
             createdAt: FieldValue.serverTimestamp(),
             type: 'manual',
-            'kitchen.createdBy': userId
+            dateKey: dateKey,
+            totalPrice: 0,
+            subtotal: 0,
+            parcelCharge: 0,
+            platformCharges: 0,
+            paymentGatewayFee: 0,
+            isParcel: false,
+            // Nested map, not a 'kitchen.createdBy' string key — set() treats dots as
+            // literal field names (only update() reads them as field paths).
+            kitchen: { createdBy: userId },
         });
 
         return NextResponse.json({ success: true, id: docId });

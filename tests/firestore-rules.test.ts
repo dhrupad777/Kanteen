@@ -80,9 +80,9 @@ describe('Firestore Security Rules', () => {
             await assertSucceeds(getDoc(doc(db, 'orders', ORDER_ID)));
         });
 
-        it('Student B CANNOT read Student A order', async () => {
+        it('Student B CAN read Student A order while it is Preparing (display board)', async () => {
             const db = getContext(STUDENT_B).firestore();
-            await assertFails(getDoc(doc(db, 'orders', ORDER_ID)));
+            await assertSucceeds(getDoc(doc(db, 'orders', ORDER_ID)));
         });
 
         it('Unauthenticated CANNOT read any order', async () => {
@@ -188,8 +188,8 @@ describe('Firestore Security Rules', () => {
             }));
         });
 
-        it('Nobody can read webhook_events from client', async () => {
-            const db = getContext(ADMIN).firestore();
+        it('Non-admin cannot read webhook_events from client', async () => {
+            const db = getContext(KITCHEN_STAFF).firestore();
             await assertFails(getDoc(doc(db, 'webhook_events', 'event-1')));
         });
     });
@@ -221,6 +221,48 @@ describe('Firestore Security Rules', () => {
         it('Students CANNOT write to menu items', async () => {
             const db = getContext(STUDENT_A).firestore();
             await assertFails(setDoc(doc(db, 'menu_items', 'hacked'), { name: 'Free Food', price: 0 }));
+        });
+    });
+
+    describe('/users', () => {
+        it('Owner can create a profile with allowed fields only', async () => {
+            const db = getContext(STUDENT_A).firestore();
+            await assertSucceeds(setDoc(doc(db, 'users', STUDENT_A.uid), {
+                uid: STUDENT_A.uid,
+                name: 'A',
+                email: STUDENT_A.email,
+                photoURL: '',
+            }));
+        });
+
+        it('Owner cannot write a role field onto their profile', async () => {
+            const db = getContext(STUDENT_A).firestore();
+            await assertFails(setDoc(doc(db, 'users', STUDENT_A.uid), {
+                uid: STUDENT_A.uid,
+                name: 'A',
+                email: STUDENT_A.email,
+                role: 'admin',
+            }));
+        });
+
+        it('Student B cannot read Student A profile', async () => {
+            await testEnv.withSecurityRulesDisabled(async (context) => {
+                await setDoc(doc(context.firestore(), 'users', STUDENT_A.uid), {
+                    uid: STUDENT_A.uid,
+                    name: 'A',
+                    email: STUDENT_A.email,
+                });
+            });
+            const db = getContext(STUDENT_B).firestore();
+            await assertFails(getDoc(doc(db, 'users', STUDENT_A.uid)));
+        });
+    });
+
+    describe('/push_subscriptions', () => {
+        it('Clients cannot read or write push subscriptions', async () => {
+            const db = getContext(STUDENT_A).firestore();
+            await assertFails(setDoc(doc(db, 'push_subscriptions', 'sub-1'), { endpoint: 'x' }));
+            await assertFails(getDoc(doc(db, 'push_subscriptions', 'sub-1')));
         });
     });
 });

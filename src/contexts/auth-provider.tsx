@@ -77,7 +77,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearTimeout(timeoutId);
       if (result?.user) {
         setUser(result.user);
-        router.replace('/student');
+        // Stay on /feedback after a poster QR sign-in. Everywhere else, land on the dashboard.
+        if (window.location.pathname !== '/feedback') {
+          router.replace('/student');
+        }
       }
       finish();
     }).catch((error) => {

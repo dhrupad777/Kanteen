@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
 import { KitchenViewSkeleton } from '@/components/skeletons';
 import { CouponGrid } from '@/components/coupon-grid';
+import { OrderErrorBoundary } from '@/components/order-error-boundary';
 import { CouponEntryForm } from '@/components/coupon-entry-form';
 import { Switch } from '@/components/ui/switch';
 import { usePrinter } from '@/hooks/use-printer';
@@ -163,11 +164,11 @@ export default function KitchenPage() {
 
     const buildJob = (order: typeof orders[number]) => ({
         token: order.token,
-        items: order.items.map(i => ({ name: i.name, qty: i.quantity, quantity: i.quantity, price: i.price })),
+        items: order.items.map(i => ({ name: i.name, qty: i.quantity, quantity: i.quantity, price: i.price, wantParcel: i.wantParcel ?? false })),
         customerName: order.userName,
         isParcel: order.isParcel || false,
         note: order.note,
-        totalPrice: order.totalPrice,
+        totalPrice: order.totalPrice ?? 0,
         parcelCharge: (order as any).parcelCharge || 0,
         platformCharges: (order as any).platformCharges || 0,
     });
@@ -426,19 +427,20 @@ export default function KitchenPage() {
                     <TabsContent value="Preparing">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {onlineByStatus.Preparing.map(order => (
-                                <OrderCard
-                                    key={order.id}
-                                    order={order}
-                                    status="Preparing"
-                                    loadingOrders={loadingOrders}
-                                    verifyingOtp={verifyingOtp}
-                                    otpValue={otpValue}
-                                    onStatusUpdate={handleStatusUpdate}
-                                    onVerifyOtp={handleVerifyOtp}
-                                    onStartVerify={() => setVerifyingOtp(order.id)}
-                                    onCancelVerify={() => setVerifyingOtp(null)}
-                                    onOtpChange={setOtpValue}
-                                />
+                                <OrderErrorBoundary key={order.id} label={order.token ? `#${order.token}` : order.id}>
+                                    <OrderCard
+                                        order={order}
+                                        status="Preparing"
+                                        loadingOrders={loadingOrders}
+                                        verifyingOtp={verifyingOtp}
+                                        otpValue={otpValue}
+                                        onStatusUpdate={handleStatusUpdate}
+                                        onVerifyOtp={handleVerifyOtp}
+                                        onStartVerify={() => setVerifyingOtp(order.id)}
+                                        onCancelVerify={() => setVerifyingOtp(null)}
+                                        onOtpChange={setOtpValue}
+                                    />
+                                </OrderErrorBoundary>
                             ))}
                         </div>
                         {onlineByStatus.Preparing.length === 0 && <EmptyState label="No online orders being prepared" />}
@@ -448,19 +450,20 @@ export default function KitchenPage() {
                     <TabsContent value="Ready">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {onlineByStatus.Ready.map(order => (
-                                <OrderCard
-                                    key={order.id}
-                                    order={order}
-                                    status="Ready"
-                                    loadingOrders={loadingOrders}
-                                    verifyingOtp={verifyingOtp}
-                                    otpValue={otpValue}
-                                    onStatusUpdate={handleStatusUpdate}
-                                    onVerifyOtp={handleVerifyOtp}
-                                    onStartVerify={() => setVerifyingOtp(order.id)}
-                                    onCancelVerify={() => setVerifyingOtp(null)}
-                                    onOtpChange={setOtpValue}
-                                />
+                                <OrderErrorBoundary key={order.id} label={order.token ? `#${order.token}` : order.id}>
+                                    <OrderCard
+                                        order={order}
+                                        status="Ready"
+                                        loadingOrders={loadingOrders}
+                                        verifyingOtp={verifyingOtp}
+                                        otpValue={otpValue}
+                                        onStatusUpdate={handleStatusUpdate}
+                                        onVerifyOtp={handleVerifyOtp}
+                                        onStartVerify={() => setVerifyingOtp(order.id)}
+                                        onCancelVerify={() => setVerifyingOtp(null)}
+                                        onOtpChange={setOtpValue}
+                                    />
+                                </OrderErrorBoundary>
                             ))}
                         </div>
                         {onlineByStatus.Ready.length === 0 && <EmptyState label="No online orders ready" />}
@@ -603,8 +606,8 @@ export default function KitchenPage() {
                                                     const job = {
                                                         token: 999,
                                                         items: [
-                                                            { name: 'Test Chai', qty: 2, quantity: 2, price: 15 },
-                                                            { name: 'Test Sandwich', qty: 1, quantity: 1, price: 40 },
+                                                            { name: 'Test Chai', qty: 2, quantity: 2, price: 15, wantParcel: true },
+                                                            { name: 'Test Sandwich', qty: 1, quantity: 1, price: 40, wantParcel: false },
                                                         ],
                                                         customerName: 'Test Customer',
                                                         isParcel: true,
