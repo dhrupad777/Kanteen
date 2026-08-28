@@ -68,9 +68,12 @@ export interface LeaderboardResponse {
   /** 'YYYY-MM' */
   month: string;
   entries: LeaderboardEntry[];
-  /** The caller's own row whenever they have a rank this month — including when
-   *  they are already inside `entries`. Null only if they haven't ordered. */
+  /** The caller's own row whenever they are on the roster — including when they
+   *  are already inside `entries`, and when they have never ordered. Null only if
+   *  they have no users/{uid} profile. */
   you: LeaderboardEntry | null;
+  /** Every ranked student, so the UI can say "#12 of 433". */
+  totalRanked: number;
 }
 
 /** One paid order in a student's month history, as it leaves

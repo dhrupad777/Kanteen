@@ -95,7 +95,7 @@ export function LeaderboardManager() {
             <div>
                 <h3 className="text-xl font-black tracking-tight">Spend Leaderboard</h3>
                 <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                    Collected Orders • Per Student
+                    Paid Orders • Per Student
                 </p>
             </div>
 

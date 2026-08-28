@@ -51,8 +51,10 @@ function Row({ entry }: { entry: LeaderboardEntry }) {
 }
 
 /** The signed-in student's own standing, pinned above the board so they never
- *  have to hunt for it — shown whether or not they made the top 10. */
-function YourRank({ entry }: { entry: LeaderboardEntry | null }) {
+ *  have to hunt for it — shown whether or not they made the top 10, and whether
+ *  or not they have ordered. The null branch is a fallback for a student with no
+ *  users/{uid} profile; everyone on the roster is ranked. */
+function YourRank({ entry, totalRanked }: { entry: LeaderboardEntry | null; totalRanked: number }) {
     return (
         <div className="flex items-center gap-3 border-b border-orange-100 bg-orange-50/70 px-4 py-3">
             <div className="w-7 shrink-0 text-center">
@@ -74,6 +76,12 @@ function YourRank({ entry }: { entry: LeaderboardEntry | null }) {
                         : 'Not ranked yet — order something to join the board'}
                 </p>
             </div>
+
+            {entry && totalRanked > 0 && (
+                <span className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
+                    of {totalRanked}
+                </span>
+            )}
 
             {entry?.photoURL && (
                 <Avatar className="h-8 w-8 shrink-0 ring-2 ring-orange-300">
@@ -136,7 +144,7 @@ export function LeaderboardList() {
         <>
             {/* Outside the scroll area on purpose — your own rank stays put while
                 you scroll the board. */}
-            <YourRank entry={data.you} />
+            <YourRank entry={data.you} totalRanked={data.totalRanked} />
 
             <div className="max-h-[55vh] divide-y divide-orange-50 overflow-y-auto">
                 {data.entries.map((entry, i) => (

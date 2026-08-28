@@ -15,26 +15,50 @@ import type { LeaderboardEntry, LeaderboardResponse } from '@/types';
  * The response shape IS the privacy boundary. Every caller must be a signed-in
  * user (this endpoint returns real names), and `spent`/`orders` are attached only
  * for the owner. The uid never leaves this file.
+ *
+ * Every registered student gets a rank: spend first, then — for everyone tied,
+ * which is most of the roster at ₹0 — whoever joined Kanteen earliest.
  */
 
-/** Orders that actually reached the student. `Completed` is the non-OTP pickup
- *  path (staff mark it from /kitchen); `PICKED_UP` is the OTP handoff. Both mean
- *  collected, and both are what the daily revenue report counts. */
-const COLLECTED_STATUSES = new Set(['PICKED_UP', 'Completed']);
+/** Orders that count toward spend: the money has actually been taken.
+ *
+ *  This deliberately starts at PAID rather than at pickup. A student checks the
+ *  board right after paying and before collecting; counting only PICKED_UP made
+ *  them look unranked in exactly that window. `pending` is an abandoned checkout
+ *  (175 of 775 orders all-time, none with a razorpayPaymentId) and never counts. */
+const COUNTED_STATUSES = new Set(['PAID', 'Preparing', 'Ready', 'PICKED_UP', 'Completed']);
 
 const TOP_N = 10;
-const CACHE_TTL_MS = 60_000;
+const ORDERS_TTL_MS = 60_000;
+/** Names and join dates never change once written, so the roster is cached far
+ *  longer than the order totals — a 60s TTL over 433 user docs would burn ~26k
+ *  reads an hour. */
+const ROSTER_TTL_MS = 15 * 60_000;
 
-/** Aggregation is per-month and identical for every caller, so cache the raw
- *  totals (not the rendered payload — that differs per caller). At ~120 orders a
- *  month a scan is cheap, but the student dashboard mounts this on every visit. */
 interface MonthTotals {
-    uid: string;
     spent: number;
     orders: number;
     fallbackName: string;
 }
-const cache = new Map<string, { rows: MonthTotals[]; expires: number }>();
+
+interface RosterEntry {
+    name: string;
+    photoURL: string | null;
+    /** users/{uid}.createdAt in ms. Later joiners rank below earlier ones. */
+    joinedAt: number;
+}
+
+interface Row {
+    uid: string;
+    spent: number;
+    orders: number;
+    name: string;
+    photoURL: string | null;
+    joinedAt: number;
+}
+
+const ordersCache = new Map<string, { totals: Map<string, MonthTotals>; expires: number }>();
+let rosterCache: { roster: Map<string, RosterEntry>; staffUids: Set<string>; expires: number } | null = null;
 
 /** 'YYYY-MM' -> the first day of the following month, as a dateKey string. */
 function nextMonthStart(month: string): string {
@@ -52,9 +76,16 @@ function toDisplayName(name: string): string {
     return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
 }
 
-async function aggregateMonth(month: string): Promise<MonthTotals[]> {
-    const cached = cache.get(month);
-    if (cached && cached.expires > Date.now()) return cached.rows;
+function toMillis(value: any): number | null {
+    if (!value) return null;
+    if (typeof value.toDate === 'function') return value.toDate().getTime();
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
+async function getMonthTotals(month: string): Promise<Map<string, MonthTotals>> {
+    const cached = ordersCache.get(month);
+    if (cached && cached.expires > Date.now()) return cached.totals;
 
     const db = getAdminDb();
 
@@ -74,7 +105,7 @@ async function aggregateMonth(month: string): Promise<MonthTotals[]> {
 
     for (const doc of snapshot.docs) {
         const data = doc.data();
-        if (!COLLECTED_STATUSES.has(data.status)) continue;
+        if (!COUNTED_STATUSES.has(data.status)) continue;
 
         // Counter/coupon orders are written with a synthetic id (`student-<name>`)
         // and totalPrice 0 — they can't be tied to one real person, so they'd only
@@ -90,7 +121,6 @@ async function aggregateMonth(month: string): Promise<MonthTotals[]> {
             existing.orders += 1;
         } else {
             totals.set(uid, {
-                uid,
                 spent: toOrderNumber(data.totalPrice),
                 orders: 1,
                 fallbackName: typeof data.userName === 'string' ? data.userName : '',
@@ -98,14 +128,87 @@ async function aggregateMonth(month: string): Promise<MonthTotals[]> {
         }
     }
 
-    // totalPrice carries paise (the grossed-up Razorpay fee makes it e.g. 3.07),
-    // so an unrounded sum surfaces as ₹9.070000000000002 in the UI.
-    const rows = [...totals.values()]
-        .map((r) => ({ ...r, spent: Math.round(r.spent * 100) / 100 }))
-        .filter((r) => r.spent > 0)
-        .sort((a, b) => b.spent - a.spent || b.orders - a.orders || a.fallbackName.localeCompare(b.fallbackName));
+    ordersCache.set(month, { totals, expires: Date.now() + ORDERS_TTL_MS });
+    return totals;
+}
 
-    cache.set(month, { rows, expires: Date.now() + CACHE_TTL_MS });
+async function getRoster() {
+    if (rosterCache && rosterCache.expires > Date.now()) return rosterCache;
+
+    const db = getAdminDb();
+    const [usersSnap, allowlistSnap] = await Promise.all([
+        db.collection('users').get(),
+        // Operational accounts (kitchen.mrc@, counter.mrc@, …) live here and have
+        // no business on a student leaderboard.
+        db.collection('manager_allowlist').get(),
+    ]);
+
+    const staffEmails = new Set(allowlistSnap.docs.map((d) => d.id.toLowerCase()));
+    const roster = new Map<string, RosterEntry>();
+    const staffUids = new Set<string>();
+
+    for (const doc of usersSnap.docs) {
+        const data = doc.data();
+        const email = typeof data?.email === 'string' ? data.email : '';
+        if (email && staffEmails.has(email.toLowerCase())) {
+            staffUids.add(doc.id);
+            continue;
+        }
+
+        roster.set(doc.id, {
+            // users/{uid}.name is the stable one — auth-provider deliberately never
+            // overwrites it after the first sign-in.
+            name: typeof data?.name === 'string' && data.name.trim() ? data.name : '',
+            photoURL: typeof data?.photoURL === 'string' && data.photoURL ? data.photoURL : null,
+            // No createdAt (very old docs) sorts last among equal spend.
+            joinedAt: toMillis(data?.createdAt) ?? Number.MAX_SAFE_INTEGER,
+        });
+    }
+
+    rosterCache = { roster, staffUids, expires: Date.now() + ROSTER_TTL_MS };
+    return rosterCache;
+}
+
+async function buildRows(month: string): Promise<Row[]> {
+    const [totals, { roster, staffUids }] = await Promise.all([getMonthTotals(month), getRoster()]);
+
+    const rows: Row[] = [];
+
+    for (const [uid, entry] of roster) {
+        const t = totals.get(uid);
+        rows.push({
+            uid,
+            // totalPrice is fractional (Razorpay fee gross-up), so an unrounded sum
+            // surfaces as ₹745.5800000000002.
+            spent: t ? Math.round(t.spent * 100) / 100 : 0,
+            orders: t?.orders ?? 0,
+            name: entry.name || t?.fallbackName || 'Student',
+            photoURL: entry.photoURL,
+            joinedAt: entry.joinedAt,
+        });
+    }
+
+    // Ordered but has no users/{uid} doc. Shouldn't happen — ordering requires
+    // sign-in, which writes the profile — but don't drop their spend if it does.
+    for (const [uid, t] of totals) {
+        if (roster.has(uid) || staffUids.has(uid)) continue;
+        rows.push({
+            uid,
+            spent: Math.round(t.spent * 100) / 100,
+            orders: t.orders,
+            name: t.fallbackName || 'Student',
+            photoURL: null,
+            joinedAt: Number.MAX_SAFE_INTEGER,
+        });
+    }
+
+    // Spend first; everyone tied — which is most of the roster at ₹0 — is ordered
+    // by who joined Kanteen earliest. uid is the final key so the order is stable.
+    rows.sort((a, b) =>
+        b.spent - a.spent
+        || a.joinedAt - b.joinedAt
+        || a.uid.localeCompare(b.uid));
+
     return rows;
 }
 
@@ -113,8 +216,12 @@ export async function GET(request: NextRequest) {
     const clientIP = getClientIP(request);
 
     try {
-        const { success: rateLimitOk } = rateLimit(`leaderboard:${clientIP}`, 30, 60000);
-        if (!rateLimitOk) {
+        // A whole campus sits behind one NAT'd public IP, so this ceiling is abuse
+        // protection, NOT a per-student budget — at 30/min it was rejecting most
+        // students at lunch, and a 429 renders as "unranked". The real per-student
+        // limit is keyed on uid below. Same trap as api/feedback/route.ts:40.
+        const { success: ipOk } = rateLimit(`leaderboard-ip:${clientIP}`, 600, 60000);
+        if (!ipOk) {
             return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
         }
 
@@ -132,12 +239,15 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const { success: uidOk } = rateLimit(`leaderboard-uid:${decodedToken.uid}`, 20, 60000);
+        if (!uidOk) {
+            return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+        }
+
         const monthParam = request.nextUrl.searchParams.get('month');
         const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam ?? '')
             ? monthParam!
             : new Date().toISOString().slice(0, 7);
-
-        const db = getAdminDb();
 
         // Amounts are owner-only, gated on exactly what /report gates on: the
         // isOwner claim, minted by /api/auth/staff-login for kitchen_manager
@@ -148,42 +258,21 @@ export async function GET(request: NextRequest) {
         // not theirs to see.
         const isOwner = decodedToken.isOwner === true;
 
-        const rows = await aggregateMonth(month);
-
-        // Only the visible slice needs a name and avatar. The caller's own row is
-        // fetched too when they placed outside it — the student view pins their
-        // rank above the board whether or not they made the top 10.
+        const rows = await buildRows(month);
         const callerIndex = rows.findIndex((r) => r.uid === decodedToken.uid);
         const visible = isOwner ? rows : rows.slice(0, TOP_N);
-        const needsProfile = [...visible];
-        if (callerIndex >= 0 && callerIndex >= visible.length) needsProfile.push(rows[callerIndex]);
-
-        const profiles = new Map<string, { name: string; photoURL: string | null }>();
-        if (needsProfile.length > 0) {
-            const docs = await db.getAll(...needsProfile.map((r) => db.collection('users').doc(r.uid)));
-            for (const doc of docs) {
-                const data = doc.data();
-                profiles.set(doc.id, {
-                    // users/{uid}.name is the stable one — auth-provider deliberately
-                    // never overwrites it after the first sign-in.
-                    name: typeof data?.name === 'string' && data.name.trim() ? data.name : '',
-                    photoURL: typeof data?.photoURL === 'string' && data.photoURL ? data.photoURL : null,
-                });
-            }
-        }
 
         // Built key by key rather than spread-and-delete, so a new internal field
         // can never leak into the student payload by accident.
-        const toEntry = (row: MonthTotals, rank: number): LeaderboardEntry => {
-            const profile = profiles.get(row.uid);
+        const toEntry = (row: Row, rank: number): LeaderboardEntry => {
             const entry: LeaderboardEntry = {
                 rank,
-                displayName: toDisplayName(profile?.name || row.fallbackName || 'Student'),
-                photoURL: profile?.photoURL ?? null,
+                displayName: toDisplayName(row.name),
+                photoURL: row.photoURL,
                 isYou: row.uid === decodedToken.uid,
             };
             if (isOwner) {
-                entry.displayName = profile?.name || row.fallbackName || 'Student';
+                entry.displayName = row.name;
                 entry.spent = row.spent;
                 entry.orders = row.orders;
             }
@@ -193,9 +282,11 @@ export async function GET(request: NextRequest) {
         const response: LeaderboardResponse = {
             month,
             entries: visible.map((row, i) => toEntry(row, i + 1)),
-            // Always present when the caller has a rank, even inside the top 10 —
-            // the student view shows it as a banner above the board.
+            // Always present when the caller is on the roster — the student view
+            // shows it as a banner above the board, whether or not they made the
+            // top 10 and whether or not they have ordered.
             you: callerIndex >= 0 ? toEntry(rows[callerIndex], callerIndex + 1) : null,
+            totalRanked: rows.length,
         };
 
         return NextResponse.json(response);

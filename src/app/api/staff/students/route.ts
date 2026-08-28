@@ -21,8 +21,9 @@ import type { StudentDirectoryEntry, StudentDirectoryResponse, StudentOrderSumma
  *  occurs today — 172 of 744 orders all-time are abandoned payments. */
 const EXCLUDED_STATUSES = new Set(['pending', 'EXPIRED', 'CANCELLED', 'Archived']);
 
-/** Collected — what the ₹ total sums, matching the leaderboard's definition. */
-const COLLECTED_STATUSES = new Set(['PICKED_UP', 'Completed']);
+/** What the ₹ total sums, matching the leaderboard's definition — money taken,
+ *  from payment onward rather than from pickup. The two views must not diverge. */
+const COUNTED_STATUSES = new Set(['PAID', 'Preparing', 'Ready', 'PICKED_UP', 'Completed']);
 
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, { data: StudentDirectoryResponse; expires: number }>();
@@ -79,7 +80,7 @@ async function buildDirectory(month: string): Promise<StudentDirectoryResponse> 
         // toOrderNumber, not `|| 0`: a manual order written without totalPrice
         // once crashed every dashboard. See @/lib/order-normalize.
         const totalPrice = toOrderNumber(data.totalPrice);
-        if (COLLECTED_STATUSES.has(data.status)) entry.spent += totalPrice;
+        if (COUNTED_STATUSES.has(data.status)) entry.spent += totalPrice;
         if (!entry.fallbackName && typeof data.userName === 'string') entry.fallbackName = data.userName;
 
         entry.orders.push({
