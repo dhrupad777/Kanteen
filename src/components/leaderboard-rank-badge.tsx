@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { LeaderboardList } from "@/components/leaderboard-list";
 import { useAuth } from "@/hooks/use-auth";
-import { useLeaderboard } from "@/hooks/use-leaderboard";
+import { invalidateLeaderboard, useLeaderboard } from "@/hooks/use-leaderboard";
 import { cn } from "@/lib/utils";
 
 /**
@@ -43,7 +43,12 @@ export function LeaderboardRankBadge() {
     return (
         <>
             <button
-                onClick={() => setOpen(true)}
+                onClick={() => {
+                    // Opening the board is an explicit "show me where I stand now",
+                    // so bypass the 60s throttle rather than serve a cached copy.
+                    invalidateLeaderboard();
+                    setOpen(true);
+                }}
                 title={label}
                 aria-label={label}
                 className={cn(

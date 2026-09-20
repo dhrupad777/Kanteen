@@ -289,7 +289,13 @@ export async function GET(request: NextRequest) {
             totalRanked: rows.length,
         };
 
-        return NextResponse.json(response);
+        // Per-caller payload (`isYou`, `you`, and amounts for the owner) over a
+        // board that moves with every order — nothing in front of this route may
+        // hold a copy. The page-HTML s-maxage rule in next.config.ts does not cover
+        // /api, but say so explicitly rather than rely on that staying true.
+        return NextResponse.json(response, {
+            headers: { 'Cache-Control': 'no-store' },
+        });
     } catch (error: any) {
         console.error('Leaderboard error:', error instanceof Error ? error.message : 'Unknown error');
         return NextResponse.json({ error: 'Failed to load leaderboard' }, { status: 500 });
