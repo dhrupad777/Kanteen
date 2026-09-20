@@ -4,10 +4,8 @@ import { useState, useEffect } from "react";
 import { collection, query, where, orderBy, onSnapshot, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Order } from "@/types";
-import { format } from "date-fns";
-import { Loader2, Receipt, Clock, CheckCircle2, ChefHat, Package, TrendingUp } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { Loader2, Receipt, TrendingUp } from "lucide-react";
+import { OrderRow } from "@/components/order-row";
 
 export function OrderTracker() {
     const [orders, setOrders] = useState<Order[]>([]);
@@ -68,34 +66,6 @@ export function OrderTracker() {
     const totalRevenue = orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
     const activeCount = orders.filter(o => !['Completed', 'PICKED_UP'].includes(o.status)).length;
 
-    const getStatusStyle = (status: string) => {
-        switch (status) {
-            case 'PAID': return "bg-blue-50 text-blue-700 border-blue-200";
-            case 'Preparing': return "bg-orange-50 text-orange-700 border-orange-200";
-            case 'Ready': return "bg-emerald-50 text-emerald-700 border-emerald-200";
-            case 'Completed':
-            case 'PICKED_UP': return "bg-green-50 text-green-700 border-green-200";
-            default: return "bg-gray-50 text-gray-600 border-gray-200";
-        }
-    };
-
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case 'PAID': return <Receipt className="h-3.5 w-3.5" />;
-            case 'Preparing': return <ChefHat className="h-3.5 w-3.5" />;
-            case 'Ready': return <CheckCircle2 className="h-3.5 w-3.5" />;
-            case 'Completed':
-            case 'PICKED_UP': return <CheckCircle2 className="h-3.5 w-3.5" />;
-            default: return <Receipt className="h-3.5 w-3.5" />;
-        }
-    };
-
-    const getStatusLabel = (status: string) => {
-        if (status === 'PICKED_UP') return 'Collected';
-        if (status === 'Completed') return 'Collected';
-        return status;
-    };
-
     return (
         <div className="space-y-4">
             {/* Summary bar */}
@@ -110,71 +80,9 @@ export function OrderTracker() {
                 </div>
             </div>
 
-            {orders.map((order) => {
-                const pickedUpAt = (order as any).kitchen?.pickedUpAt;
-                const pickedUpDate = pickedUpAt instanceof Timestamp
-                    ? pickedUpAt.toDate()
-                    : pickedUpAt ? new Date(pickedUpAt) : null;
-
-                const isDone = order.status === 'Completed' || order.status === 'PICKED_UP';
-
-                return (
-                    <div key={order.id} className={cn(
-                        "bg-white rounded-2xl p-4 border shadow-sm transition-all hover:shadow-md",
-                        isDone ? "border-green-100 bg-green-50/30" : "border-gray-100"
-                    )}>
-                        <div className="flex justify-between items-start mb-3">
-                            <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-2xl font-black text-gray-900 tracking-tight">#{order.token}</span>
-                                    <Badge variant="outline" className={cn("px-2 py-0.5 whitespace-nowrap gap-1 font-semibold", getStatusStyle(order.status))}>
-                                        {getStatusIcon(order.status)}
-                                        {getStatusLabel(order.status)}
-                                    </Badge>
-                                    {order.isParcel && (
-                                        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 font-semibold gap-1">
-                                            <Package className="h-3.5 w-3.5" />
-                                            Parcel
-                                        </Badge>
-                                    )}
-                                </div>
-                                <h3 className="text-sm font-semibold text-gray-700">{order.userName || 'Guest'}</h3>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-lg font-bold text-gray-900">₹{order.totalPrice}</p>
-                                <p className="text-[11px] font-medium text-gray-500 flex items-center justify-end gap-1 mt-0.5">
-                                    <Clock className="h-3 w-3" />
-                                    {format(order.createdAt, "h:mm a")}
-                                </p>
-                                {pickedUpDate && (
-                                    <p className="text-[11px] font-medium text-green-600 flex items-center justify-end gap-1 mt-0.5">
-                                        <CheckCircle2 className="h-3 w-3" />
-                                        Collected {format(pickedUpDate, "h:mm a")}
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="bg-gray-50 rounded-xl p-3">
-                            <ul className="space-y-1.5">
-                                {order.items.map((item, i) => (
-                                    <li key={i} className="flex justify-between text-sm">
-                                        <span className="font-medium text-gray-800">
-                                            {item.quantity} × {item.name}
-                                        </span>
-                                        <span className="text-gray-500 font-medium">₹{item.price * item.quantity}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                            {order.note && (
-                                <div className="mt-3 text-xs bg-amber-50 text-amber-800 p-2 rounded border border-amber-100 font-medium">
-                                    <span className="font-bold mr-1">Note:</span>{order.note}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                );
-            })}
+            {orders.map((order) => (
+                <OrderRow key={order.id} order={order} />
+            ))}
         </div>
     );
 }

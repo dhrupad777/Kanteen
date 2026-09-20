@@ -45,6 +45,74 @@ export interface UserProfile {
   updatedAt?: any;
 }
 
+/** One row of the monthly spend leaderboard, as it leaves GET /api/leaderboard.
+ *
+ *  There is no `studentId` here on purpose. The student-facing board shows names,
+ *  so the payload is the privacy boundary: `spent` and `orders` are attached only
+ *  for the owner/manager, and the uid never ships at all. */
+export interface LeaderboardEntry {
+  /** 1-based, sequential. Ties are broken, not shared. */
+  rank: number;
+  /** "Dhrupad R." — first name plus last initial. Single-word names render as-is. */
+  displayName: string;
+  /** Google profile picture from `users/{uid}.photoURL`, or null. */
+  photoURL: string | null;
+  isYou: boolean;
+  /** Manager-only. Absent in the student payload. */
+  spent?: number;
+  /** Manager-only. Absent in the student payload. */
+  orders?: number;
+}
+
+export interface LeaderboardResponse {
+  /** 'YYYY-MM' */
+  month: string;
+  entries: LeaderboardEntry[];
+  /** The caller's own row whenever they are on the roster — including when they
+   *  are already inside `entries`, and when they have never ordered. Null only if
+   *  they have no users/{uid} profile. */
+  you: LeaderboardEntry | null;
+  /** Every ranked student, so the UI can say "#12 of 433". */
+  totalRanked: number;
+}
+
+/** One paid order in a student's month history, as it leaves
+ *  GET /api/staff/students. `createdAt`/`pickedUpAt` are ISO strings over the
+ *  wire; OrderRow coerces them back to Date. */
+export interface StudentOrderSummary {
+  id: string;
+  token: number;
+  status: OrderStatus;
+  totalPrice: number;
+  items: { name: string; quantity: number; price: number }[];
+  isParcel: boolean;
+  note?: string;
+  createdAt: string | null;
+  pickedUpAt: string | null;
+}
+
+/** A student in the owner's directory, for one month.
+ *
+ *  Owner-only: unlike LeaderboardEntry this carries uid and email, because the
+ *  endpoint is gated on the isOwner claim and has no student-facing tier. */
+export interface StudentDirectoryEntry {
+  uid: string;
+  name: string;
+  email: string;
+  photoURL: string | null;
+  /** Sum over COLLECTED orders only, so it agrees with the leaderboard. */
+  spent: number;
+  /** Length of `orders` — paid orders in the month, collected or not. */
+  orderCount: number;
+  orders: StudentOrderSummary[];
+}
+
+export interface StudentDirectoryResponse {
+  /** 'YYYY-MM' */
+  month: string;
+  students: StudentDirectoryEntry[];
+}
+
 /** General feedback from a signed-in student — not tied to any order.
  *  Stored in `feedback/{autoId}`, written server-side only via POST /api/feedback. */
 export interface Feedback {

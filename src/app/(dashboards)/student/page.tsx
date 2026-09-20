@@ -5,6 +5,7 @@ import { useOrders } from '@/contexts/order-provider';
 import { OrderCard } from '@/components/order-card';
 import { OrderErrorBoundary } from '@/components/order-error-boundary';
 import { FeedbackButton } from '@/components/feedback-button';
+import { LeaderboardRankBadge } from '@/components/leaderboard-rank-badge';
 import { Order } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff, Bell, Smartphone, Share, Download, Wrench } from 'lucide-react';
@@ -415,6 +416,8 @@ export default function StudentDashboardPage() {
 
           {/* Right-hand actions — grouped so the header layout holds however many render */}
           <div className="flex items-center gap-1 shrink-0">
+          <LeaderboardRankBadge />
+
           <FeedbackButton />
 
           {/* Notification bell — only shown for logged-in users on supported browsers */}

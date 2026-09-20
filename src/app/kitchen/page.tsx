@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useOrders } from '@/contexts/order-provider';
 import { useAuth } from '@/hooks/use-auth';
 import { useStaffAuth } from '@/hooks/use-staff-auth';
-import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, EyeOff, LogOut, Bluetooth, Printer, AlertCircle, PrinterIcon, History, SkipForward, RotateCcw } from 'lucide-react';
+import { Loader2, Search, CheckCircle2, Package, Clock, Utensils, Key, EyeOff, LogOut, Bluetooth, Printer, AlertCircle, PrinterIcon, History, SkipForward, RotateCcw, Power } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,14 +49,38 @@ export default function KitchenPage() {
     // ── 24/7 kitchen override — bypasses the 8:00 AM – 8:45 PM ordering gate ─
     const [kitchen24x7, setKitchen24x7] = useState(false);
     const [toggling24x7, setToggling24x7] = useState(false);
+    // ── Online ordering master switch (same flag the /counter page writes) ───
+    const [kitchenActive, setKitchenActive] = useState(true);
+    const [togglingKitchen, setTogglingKitchen] = useState(false);
     useEffect(() => {
         const unsub = onSnapshot(
             doc(db, 'canteen_state', 'settings'),
-            (snap) => { setKitchen24x7(snap.exists() && snap.data().kitchen24x7 === true); },
+            (snap) => {
+                setKitchen24x7(snap.exists() && snap.data().kitchen24x7 === true);
+                setKitchenActive(snap.exists() ? snap.data().studentOrderingEnabled !== false : true);
+            },
             () => { /* keep current state on error */ },
         );
         return () => unsub();
     }, []);
+
+    const toggleKitchen = async (next: boolean) => {
+        setTogglingKitchen(true);
+        try {
+            await setDoc(doc(db, 'canteen_state', 'settings'), {
+                studentOrderingEnabled: next,
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+            toast({
+                title: next ? 'Online Ordering Resumed' : 'Online Ordering Paused',
+                description: next ? 'Students can now place orders.' : 'Student ordering is now disabled.',
+            });
+        } catch {
+            toast({ title: 'Failed to update', variant: 'destructive' });
+        } finally {
+            setTogglingKitchen(false);
+        }
+    };
 
     const toggle24x7 = async () => {
         setToggling24x7(true);
@@ -332,6 +356,12 @@ export default function KitchenPage() {
                                 <EyeOff className="h-5 w-5 text-primary" />
                             </Button>
                         </Link>
+                        {/* Online ordering master switch — hold to flip */}
+                        <HoldToToggle
+                            active={kitchenActive}
+                            busy={togglingKitchen}
+                            onComplete={() => toggleKitchen(!kitchenActive)}
+                        />
                         {/* 24/7 override toggle */}
                         <Button
                             variant="outline"
@@ -811,6 +841,81 @@ export default function KitchenPage() {
                 </Tabs>
             </main>
         </div>
+    );
+}
+
+// Press-and-hold switch for the online ordering master flag.
+// A tap does nothing on purpose — this kills/restores ordering app-wide, so it
+// takes a deliberate 1.2s hold. Releasing early snaps the fill back, no write.
+const HOLD_MS = 1200;
+
+function HoldToToggle({
+    active, busy, onComplete,
+}: {
+    active: boolean;
+    busy: boolean;
+    onComplete: () => void;
+}) {
+    const [holding, setHolding] = useState(false);
+    const timer = useRef<NodeJS.Timeout>();
+
+    const cancelHold = useCallback(() => {
+        clearTimeout(timer.current);
+        setHolding(false);
+    }, []);
+
+    const startHold = useCallback(() => {
+        if (busy) return;
+        setHolding(true);
+        timer.current = setTimeout(() => {
+            setHolding(false);
+            onComplete();
+        }, HOLD_MS);
+    }, [busy, onComplete]);
+
+    useEffect(() => () => clearTimeout(timer.current), []);
+
+    return (
+        <button
+            type="button"
+            disabled={busy}
+            onPointerDown={startHold}
+            onPointerUp={cancelHold}
+            onPointerLeave={cancelHold}
+            onPointerCancel={cancelHold}
+            onKeyDown={(e) => {
+                if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); startHold(); }
+            }}
+            onKeyUp={cancelHold}
+            onContextMenu={(e) => e.preventDefault()}
+            style={{ touchAction: 'none' }}
+            title={active ? 'Hold to pause online ordering' : 'Hold to resume online ordering'}
+            className={cn(
+                "relative overflow-hidden select-none inline-flex items-center justify-center",
+                "h-10 md:h-11 shrink-0 px-3 gap-1.5 font-bold text-xs rounded-md border",
+                "disabled:opacity-50 disabled:pointer-events-none",
+                active
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                    : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+            )}
+        >
+            {/* Progress fill — sweeps L→R over the hold, snaps back on release */}
+            <span
+                aria-hidden
+                className={cn(
+                    "absolute inset-y-0 left-0 transition-[width] ease-linear",
+                    active ? "bg-emerald-300/60" : "bg-red-300/60",
+                    holding ? "duration-[1200ms]" : "duration-150"
+                )}
+                style={{ width: holding ? '100%' : '0%' }}
+            />
+            <span className="relative flex items-center gap-1.5">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                <span className="hidden md:inline">
+                    {holding ? 'Hold…' : active ? 'Online' : 'Paused'}
+                </span>
+            </span>
+        </button>
     );
 }
 

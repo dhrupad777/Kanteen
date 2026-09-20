@@ -6,11 +6,13 @@ import { ReportsManager } from "@/components/reports-manager";
 import { OrderTracker } from "@/components/order-tracker";
 import { OrderCleanup } from "@/components/order-cleanup";
 import { FeedbackList } from "@/components/feedback-list";
+import { LeaderboardManager } from "@/components/leaderboard-manager";
+import { StudentsManager } from "@/components/students-manager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, BarChart3, LogOut, ShieldAlert, UtensilsCrossed, ChefHat, Trash2 } from "lucide-react";
+import { Loader2, BarChart3, LogOut, ShieldAlert, UtensilsCrossed, ChefHat, Trash2, ClipboardList, MessageSquare, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -166,13 +168,34 @@ export default function ReportPage() {
                 </div>
 
                 <Tabs defaultValue="reports" className="w-full">
-                    <TabsList className="grid w-full max-w-2xl grid-cols-4 bg-slate-200/50 p-1 mb-6 rounded-xl">
-                        <TabsTrigger value="reports" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">Business Reports</TabsTrigger>
-                        <TabsTrigger value="tracker" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">Order Tracker</TabsTrigger>
-                        <TabsTrigger value="feedback" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">Feedback</TabsTrigger>
-                        <TabsTrigger value="cleanup" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-red-600 data-[state=active]:shadow-sm gap-1.5">
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Cancel Orders
+                    {/* Six tabs won't fit as words below `md`, so labels collapse to
+                        icons — the same treatment as the header buttons above. The
+                        breakpoint is `md` not `sm`: at 640px six labels leave ~106px
+                        each, which "Leaderboard" alone overflows. */}
+                    <TabsList className="grid w-full max-w-3xl grid-cols-6 bg-slate-200/50 p-1 mb-6 rounded-xl">
+                        <TabsTrigger value="reports" aria-label="Business Reports" className="rounded-lg gap-1.5 px-1 md:px-3 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                            <BarChart3 className="h-4 w-4 shrink-0" />
+                            <span className="hidden md:inline">Reports</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="tracker" aria-label="Order Tracker" className="rounded-lg gap-1.5 px-1 md:px-3 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                            <ClipboardList className="h-4 w-4 shrink-0" />
+                            <span className="hidden md:inline">Orders</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="feedback" aria-label="Feedback" className="rounded-lg gap-1.5 px-1 md:px-3 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                            <MessageSquare className="h-4 w-4 shrink-0" />
+                            <span className="hidden md:inline">Feedback</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="students" aria-label="Students" className="rounded-lg gap-1.5 px-1 md:px-3 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                            <Users className="h-4 w-4 shrink-0" />
+                            <span className="hidden md:inline">Students</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="leaderboard" aria-label="Spend Leaderboard" className="rounded-lg gap-1.5 px-1 md:px-3 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                            <Trophy className="h-4 w-4 shrink-0" />
+                            <span className="hidden md:inline">Ranks</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="cleanup" aria-label="Cancel Orders" className="rounded-lg gap-1.5 px-1 md:px-3 data-[state=active]:bg-white data-[state=active]:text-red-600 data-[state=active]:shadow-sm">
+                            <Trash2 className="h-4 w-4 shrink-0" />
+                            <span className="hidden md:inline">Cancel</span>
                         </TabsTrigger>
                     </TabsList>
 
@@ -186,6 +209,14 @@ export default function ReportPage() {
 
                     <TabsContent value="feedback" className="m-0">
                         <FeedbackList />
+                    </TabsContent>
+
+                    <TabsContent value="students" className="m-0">
+                        <StudentsManager />
+                    </TabsContent>
+
+                    <TabsContent value="leaderboard" className="m-0">
+                        <LeaderboardManager />
                     </TabsContent>
 
                     <TabsContent value="cleanup" className="m-0">

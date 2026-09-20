@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { CreateRazorpayOrderResponse, VerifyPaymentResponse } from '@/types';
 import { savePendingPayment, updatePendingPayment, clearPendingPayment } from '@/lib/pending-payment';
+import { invalidateLeaderboard } from '@/hooks/use-leaderboard';
 
 declare global {
     interface Window {
@@ -138,6 +139,10 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
             const data = await response.json();
             throw new Error(data.error || 'Payment verification failed');
         }
+        // Spend counts from PAID onward, so this student's rank has just moved.
+        // The recovery path has its own verify call and invalidates separately —
+        // see use-pending-payment.ts.
+        invalidateLeaderboard();
         return response.json();
     }, []);
 

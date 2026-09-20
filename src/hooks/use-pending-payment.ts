@@ -8,6 +8,7 @@ import {
     type PendingPayment,
 } from '@/lib/pending-payment';
 import type { VerifyPaymentResponse } from '@/types';
+import { invalidateLeaderboard } from './use-leaderboard';
 
 /**
  * Recovers the token for a payment whose confirmation never reached the student.
@@ -44,6 +45,9 @@ export function usePendingPayment(onRecovered: (result: { token: number; orderId
             if (token === 'unresolved') return; // leave the record for the next load
             clearPendingPayment();
             if (typeof token === 'number') {
+                // A recovered order is a confirmed one, so this student's spend —
+                // and their rank — changed while the tab was away.
+                invalidateLeaderboard();
                 onRecoveredRef.current({ token, orderId: pending.orderId });
             }
         };
