@@ -5,10 +5,28 @@ import type { CreateRazorpayOrderResponse, VerifyPaymentResponse } from '@/types
 import { savePendingPayment, updatePendingPayment, clearPendingPayment } from '@/lib/pending-payment';
 import { loadPayPref, savePayPref, type SavedPayPref } from '@/lib/pay-pref-cache';
 import { invalidateLeaderboard } from '@/hooks/use-leaderboard';
+import { buildDisplayConfig } from '@/lib/razorpay-display-config';
 
 declare global {
     interface Window {
         Razorpay: any;
+    }
+}
+
+/** True when running as a home-screen installed app rather than a browser tab.
+ *
+ *  Same two checks as use-push-notifications: iOS exposes `navigator.standalone`,
+ *  everything else answers the display-mode media query. Kept local rather than
+ *  shared so a future change to push or install behaviour can never alter the
+ *  payment flow. Any uncertainty resolves to `false` — a browser tab is the
+ *  behaviour that already works. */
+function isStandalonePWA(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+        return ('standalone' in window.navigator && (window.navigator as any).standalone === true)
+            || window.matchMedia('(display-mode: standalone)').matches;
+    } catch {
+        return false;
     }
 }
 
@@ -143,6 +161,8 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
 
             // 3. Saved payment preferences (for pre-fill)
             const localPref = loadPayPref(uid);
+            // Read once per checkout — the display mode cannot change mid-payment.
+            const isStandalone = isStandalonePWA();
 
             // 4. Create order on server
             const orderData = await createOrder(token, checkoutOptions);
@@ -224,27 +244,14 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                 // Pre-fill UPI VPA — Razorpay will jump straight to UPI collect screen
                 if (pref.method === 'upi' && pref.vpa) prefill.vpa = pref.vpa;
 
-                // ── Build display config to pre-select last-used payment method ──
-                // `config.display.defaultBlock` jumps the user directly to their preferred
-                // payment method instead of showing the full method list.
-                const config: Record<string, any> = { display: {} };
-                if (pref.method === 'upi') {
-                    config.display.defaultBlock = 'upi';
-                    config.display.blocks = {
-                        upi: { name: 'Pay via UPI', instruments: [{ method: 'upi' }] },
-                        other: { name: 'Other methods' },
-                    };
-                    config.display.sequence = ['block.upi', 'block.other'];
-                    config.display.preferences = { show_default_blocks: true };
-                } else if (pref.method === 'card') {
-                    config.display.defaultBlock = 'card';
-                    config.display.blocks = {
-                        card: { name: 'Pay via Card', instruments: [{ method: 'card' }] },
-                        other: { name: 'Other methods' },
-                    };
-                    config.display.sequence = ['block.card', 'block.other'];
-                    config.display.preferences = { show_default_blocks: true };
-                }
+                // Which payment blocks to show, and critically which UPI flow to request.
+                // All of that decision lives in lib/razorpay-display-config.ts so it can be
+                // unit-tested — the PWA-only bug it guards against cannot be reproduced on a
+                // desktop, so the logic is covered there rather than discovered in production.
+                const displayConfig = buildDisplayConfig({
+                    savedMethod: pref.method,
+                    isStandalone,
+                });
 
                 const razorpayOptions: Record<string, any> = {
                     key: orderData.keyId,
@@ -260,9 +267,10 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     })(),
                     order_id: orderData.razorpayOrderId,
                     prefill,
-                    // Only attach config when we have a method preference — avoids
-                    // sending an empty config object to Razorpay on first-time users
-                    ...(pref.method ? { config } : {}),
+                    // buildDisplayConfig returns undefined when there is nothing worth
+                    // saying, so the "never send a meaningless config" rule is enforced
+                    // there and tested, not re-derived here.
+                    ...(displayConfig ? { config: displayConfig } : {}),
                     theme: { color: '#FF8C00' },
                     // Retry once automatically — covers transient network errors
                     retry: { enabled: true, max_count: 1 },

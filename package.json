@@ -13,6 +13,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rules": "vitest run tests/firestore-rules.test.ts",
     "deploy:manual": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-manual.ps1"
   },
   "dependencies": {
