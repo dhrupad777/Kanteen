@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { savePayPrefForUser } from '@/lib/pay-pref';
 import { FieldValue } from 'firebase-admin/firestore';
 import Razorpay from 'razorpay';
 import { verifyWebhookSignature, generateSecureOTP, hashOTP, generateOTPSalt } from '@/lib/crypto-utils';
@@ -306,6 +307,17 @@ export async function POST(request: NextRequest) {
                         confirmedResult.userName,
                     ).catch(() => {});
                 }
+
+                // This is THE path that was losing the pre-fill: a UPI app-switch often
+                // never re-triggers the Razorpay handler, so verify-payment never runs and
+                // nothing was ever cached. Without this, the students who leave the browser
+                // re-enter their number on every single order.
+                //
+                // Reads the signature-verified webhook payload rather than the API re-fetch
+                // above (whose `payment` is scoped to that verification block). The re-fetch
+                // guards amount/status/currency — money fields. contact/method/vpa are
+                // convenience only, and the HMAC check already rules out a forged payload.
+                savePayPrefForUser(db, confirmedResult.studentId, paymentEntity);
             }
 
             await logAuditEvent({

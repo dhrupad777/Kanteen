@@ -3,7 +3,7 @@ import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import Razorpay from 'razorpay';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
-import type { CreateRazorpayOrderRequest, CreateRazorpayOrderResponse, CheckoutItem } from '@/types';
+import type { CreateRazorpayOrderRequest, CreateRazorpayOrderResponse, CheckoutItem, PayPref } from '@/types';
 import { calculatePaymentBreakdown } from '@/lib/payment-fee';
 import { isNoParcelCategory } from '@/lib/parcel-categories';
 import { calculateParcelCharge, type ParcelItem } from '@/lib/parcel-calc';
@@ -261,6 +261,25 @@ export async function POST(request: NextRequest) {
         await orderRef.set(orderData);
 
         // ====== RETURN RESPONSE ======
+        // Last-used payment details, so a returning student skips the phone-entry and
+        // method-list screens. Best-effort by design: the order is already created and
+        // paid-for work must not fail over a convenience lookup, so any error here just
+        // means the client falls back to its own localStorage copy.
+        let payPref: PayPref | undefined;
+        try {
+            const profile = await db.collection('users').doc(uid).get();
+            const stored = profile.exists ? profile.data()?.payPref : null;
+            if (stored && typeof stored === 'object') {
+                const next: PayPref = {};
+                if (typeof stored.contact === 'string' && stored.contact) next.contact = stored.contact;
+                if (typeof stored.method === 'string' && stored.method) next.method = stored.method;
+                if (typeof stored.vpa === 'string' && stored.vpa) next.vpa = stored.vpa;
+                if (Object.keys(next).length > 0) payPref = next;
+            }
+        } catch {
+            /* convenience only — leave payPref undefined */
+        }
+
         const response: CreateRazorpayOrderResponse = {
             razorpayOrderId: razorpayOrder.id,
             orderId: orderRef.id,
@@ -271,6 +290,7 @@ export async function POST(request: NextRequest) {
                 name: decodedToken.name || '',
                 email: decodedToken.email || '',
             },
+            ...(payPref ? { payPref } : {}),
         };
 
         return NextResponse.json(response);

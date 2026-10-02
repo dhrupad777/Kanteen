@@ -204,6 +204,19 @@ export interface CreateRazorpayOrderRequest {
   note?: string;
 }
 
+/** The student's last-used payment details, kept so a returning student skips the
+ *  phone-entry and method-list screens.
+ *
+ *  Stored on `users/{uid}.payPref` by the server, NOT on the order document:
+ *  firestore.rules lets any signed-in student read any order in Preparing/Ready
+ *  for the display board, so a phone number or VPA there would be public to the
+ *  whole campus. `users/{uid}` is read-own only. */
+export interface PayPref {
+  contact?: string;  // e.g. "+919876543210"
+  method?: string;   // 'upi' | 'card' | 'netbanking' | 'wallet'
+  vpa?: string;      // e.g. "user@ybl" (only when method = 'upi')
+}
+
 export interface CreateRazorpayOrderResponse {
   razorpayOrderId: string;
   orderId: string;
@@ -214,6 +227,9 @@ export interface CreateRazorpayOrderResponse {
     name: string;
     email: string;
   };
+  /** Absent for a first-time payer, and absent if the lookup failed — the client
+   *  falls back to its localStorage copy either way. */
+  payPref?: PayPref;
 }
 
 export interface VerifyPaymentRequest {

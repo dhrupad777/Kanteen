@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
+import { savePayPrefForUser } from '@/lib/pay-pref';
 import { FieldValue } from 'firebase-admin/firestore';
 import Razorpay from 'razorpay';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
@@ -291,6 +292,10 @@ export async function POST(request: NextRequest) {
         if (result.studentId) {
             sendOrderConfirmedNotification(result.orderId, result.studentId, result.token, result.userName).catch(() => {});
         }
+
+        // Cache the payment details for the next checkout's pre-fill. Same
+        // fire-and-forget contract as the push above: the order is already committed.
+        savePayPrefForUser(db, uid, payment);
 
         const response: VerifyPaymentResponse = {
             success: true,

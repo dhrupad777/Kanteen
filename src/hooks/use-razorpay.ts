@@ -3,38 +3,13 @@
 import { useState, useCallback, useRef } from 'react';
 import type { CreateRazorpayOrderResponse, VerifyPaymentResponse } from '@/types';
 import { savePendingPayment, updatePendingPayment, clearPendingPayment } from '@/lib/pending-payment';
+import { loadPayPref, savePayPref, type SavedPayPref } from '@/lib/pay-pref-cache';
 import { invalidateLeaderboard } from '@/hooks/use-leaderboard';
 
 declare global {
     interface Window {
         Razorpay: any;
     }
-}
-
-const PAY_PREF_PREFIX = 'kanteen_pay_';
-
-interface SavedPayPref {
-    contact?: string;
-    method?: string;  // 'upi' | 'card' | 'netbanking' | 'wallet'
-    vpa?: string;     // e.g. 'user@ybl'
-}
-
-function loadPayPref(uid: string): SavedPayPref {
-    try {
-        return JSON.parse(localStorage.getItem(`${PAY_PREF_PREFIX}${uid}`) || '{}');
-    } catch {
-        return {};
-    }
-}
-
-function savePayPref(uid: string, update: SavedPayPref) {
-    try {
-        const existing = loadPayPref(uid);
-        localStorage.setItem(
-            `${PAY_PREF_PREFIX}${uid}`,
-            JSON.stringify({ ...existing, ...update })
-        );
-    } catch { /* ignore storage errors */ }
 }
 
 interface UseRazorpayOptions {
@@ -167,10 +142,18 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
             const token = await getAuthToken();
 
             // 3. Saved payment preferences (for pre-fill)
-            const pref = loadPayPref(uid);
+            const localPref = loadPayPref(uid);
 
             // 4. Create order on server
             const orderData = await createOrder(token, checkoutOptions);
+
+            // The server copy lives on users/{uid} and is the durable one: it survives a
+            // cleared cache and a new phone, and it is the only one that gets written when
+            // a UPI app-switch resolves the payment via the webhook. localStorage stays as
+            // the fallback for a student whose profile write hasn't landed yet.
+            const pref: SavedPayPref = { ...localPref, ...(orderData.payPref ?? {}) };
+            // Keep the device cache in step so a later offline checkout still pre-fills.
+            if (orderData.payPref) savePayPref(uid, orderData.payPref);
 
             // Record the in-flight payment before the modal opens. If the tab dies during
             // a UPI app-switch, use-pending-payment replays this on the next load.

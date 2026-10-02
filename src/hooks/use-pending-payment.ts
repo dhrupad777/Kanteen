@@ -9,6 +9,7 @@ import {
 } from '@/lib/pending-payment';
 import type { VerifyPaymentResponse } from '@/types';
 import { invalidateLeaderboard } from './use-leaderboard';
+import { cachePayPrefFromVerify } from '@/lib/pay-pref-cache';
 
 /**
  * Recovers the token for a payment whose confirmation never reached the student.
@@ -41,7 +42,7 @@ export function usePendingPayment(onRecovered: (result: { token: number; orderId
         ranRef.current = true;
 
         const recover = async () => {
-            const token = await resolveToken(pending, user.getIdToken.bind(user));
+            const token = await resolveToken(pending, user.getIdToken.bind(user), user.uid);
             if (token === 'unresolved') return; // leave the record for the next load
             clearPendingPayment();
             if (typeof token === 'number') {
@@ -62,7 +63,8 @@ export function usePendingPayment(onRecovered: (result: { token: number; orderId
  */
 async function resolveToken(
     pending: PendingPayment,
-    getIdToken: () => Promise<string>
+    getIdToken: () => Promise<string>,
+    uid: string
 ): Promise<number | null | 'unresolved'> {
     // Path 1 — Razorpay's handler fired, so we hold the signature and can just re-verify.
     if (pending.razorpayOrderId && pending.razorpayPaymentId && pending.razorpaySignature) {
@@ -84,6 +86,10 @@ async function resolveToken(
 
             if (res.ok) {
                 const data: VerifyPaymentResponse = await res.json();
+                // Warm the device pre-fill cache. The server has already written the
+                // durable copy to users/{uid}; this just means the next checkout does not
+                // have to wait on create-order to read it back.
+                cachePayPrefFromVerify(uid, data);
                 return typeof data.token === 'number' ? data.token : null;
             }
             // 4xx means this payment will never verify (bad signature, amount mismatch,
