@@ -12,6 +12,23 @@ declare global {
     }
 }
 
+/** True when running as a home-screen installed app rather than a browser tab.
+ *
+ *  Same two checks as use-push-notifications: iOS exposes `navigator.standalone`,
+ *  everything else answers the display-mode media query. Kept local rather than
+ *  shared so a future change to push or install behaviour can never alter the
+ *  payment flow. Any uncertainty resolves to `false` — a browser tab is the
+ *  behaviour that already works. */
+function isStandalonePWA(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+        return ('standalone' in window.navigator && (window.navigator as any).standalone === true)
+            || window.matchMedia('(display-mode: standalone)').matches;
+    } catch {
+        return false;
+    }
+}
+
 interface UseRazorpayOptions {
     onSuccess?: (response: VerifyPaymentResponse) => void;
     onError?: (error: string) => void;
@@ -143,6 +160,8 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
 
             // 3. Saved payment preferences (for pre-fill)
             const localPref = loadPayPref(uid);
+            // Read once per checkout — the display mode cannot change mid-payment.
+            const isStandalone = isStandalonePWA();
 
             // 4. Create order on server
             const orderData = await createOrder(token, checkoutOptions);
@@ -224,17 +243,35 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                 // Pre-fill UPI VPA — Razorpay will jump straight to UPI collect screen
                 if (pref.method === 'upi' && pref.vpa) prefill.vpa = pref.vpa;
 
+                // ── UPI flow: intent in a browser tab, collect in an installed PWA ──
+                // Razorpay's UPI "intent" buttons deep-link into GPay/PhonePe from inside
+                // its cross-origin iframe. In display-mode: standalone, Chrome launches the
+                // app but drops the payment payload on that navigation — the student lands
+                // in Google Pay with nothing loaded, and can never finish paying. Because
+                // the payment never completes, no VPA is ever cached, so the collect
+                // pre-fill never kicks in either: the glitch keeps itself alive.
+                //
+                // Restricting UPI to `collect` here removes the deep link altogether —
+                // Razorpay raises a collect request and the UPI app shows an approval
+                // notification with the correct amount. A browser tab keeps intent, where
+                // it is both faster and works correctly.
+                const upiInstrument = isStandalone
+                    ? { method: 'upi', flows: ['collect'] }
+                    : { method: 'upi' };
+                const upiBlocks = {
+                    upi: { name: 'Pay via UPI', instruments: [upiInstrument] },
+                    other: { name: 'Other methods' },
+                };
+                const upiSequence = ['block.upi', 'block.other'];
+
                 // ── Build display config to pre-select last-used payment method ──
                 // `config.display.defaultBlock` jumps the user directly to their preferred
                 // payment method instead of showing the full method list.
                 const config: Record<string, any> = { display: {} };
                 if (pref.method === 'upi') {
                     config.display.defaultBlock = 'upi';
-                    config.display.blocks = {
-                        upi: { name: 'Pay via UPI', instruments: [{ method: 'upi' }] },
-                        other: { name: 'Other methods' },
-                    };
-                    config.display.sequence = ['block.upi', 'block.other'];
+                    config.display.blocks = upiBlocks;
+                    config.display.sequence = upiSequence;
                     config.display.preferences = { show_default_blocks: true };
                 } else if (pref.method === 'card') {
                     config.display.defaultBlock = 'card';
@@ -243,6 +280,14 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                         other: { name: 'Other methods' },
                     };
                     config.display.sequence = ['block.card', 'block.other'];
+                    config.display.preferences = { show_default_blocks: true };
+                } else if (isStandalone) {
+                    // No saved method yet — a first-time PWA payer. Checked AFTER the saved
+                    // preferences so it never overrides a card user's own default. No
+                    // defaultBlock, so they still choose freely; this exists only to keep
+                    // UPI on collect for the people most likely to hit the broken handoff.
+                    config.display.blocks = upiBlocks;
+                    config.display.sequence = upiSequence;
                     config.display.preferences = { show_default_blocks: true };
                 }
 
@@ -260,9 +305,10 @@ export function useRazorpay(options: UseRazorpayOptions = {}) {
                     })(),
                     order_id: orderData.razorpayOrderId,
                     prefill,
-                    // Only attach config when we have a method preference — avoids
-                    // sending an empty config object to Razorpay on first-time users
-                    ...(pref.method ? { config } : {}),
+                    // Attach config when we have a method preference, or when the UPI
+                    // collect override applies. Never send an empty config object — a
+                    // first-time payer in a browser tab gets Razorpay's own default UI.
+                    ...(pref.method || isStandalone ? { config } : {}),
                     theme: { color: '#FF8C00' },
                     // Retry once automatically — covers transient network errors
                     retry: { enabled: true, max_count: 1 },
