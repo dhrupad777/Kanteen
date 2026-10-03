@@ -6,7 +6,7 @@ import { OrderCard } from '@/components/order-card';
 import { OrderErrorBoundary } from '@/components/order-error-boundary';
 import { FeedbackButton } from '@/components/feedback-button';
 import { LeaderboardRankBadge } from '@/components/leaderboard-rank-badge';
-import { Order } from '@/types';
+import { Order, StudentBanner } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CupSoda, ShoppingBag, ChefHat, CheckCircle2, X, BellOff, Bell, Smartphone, Share, Download, Wrench } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -42,13 +42,27 @@ export default function StudentDashboardPage() {
     return () => navigator.serviceWorker.removeEventListener('message', handler);
   }, []);
 
-  // Maintenance mode — controlled from /counter toggle
+  // Maintenance mode — controlled from /counter toggle.
+  // The banner rides on the same listener: one snapshot, no extra read, and the
+  // banner updates live when the owner changes it from /report.
   const [orderingEnabled, setOrderingEnabled] = useState<boolean | null>(null);
+  const [banner, setBanner] = useState<StudentBanner | null>(null);
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'canteen_state', 'settings'),
-      (snap) => setOrderingEnabled(snap.exists() ? snap.data().studentOrderingEnabled !== false : true),
-      () => setOrderingEnabled(true), // on error, default open
+      (snap) => {
+        const data = snap.exists() ? snap.data() : null;
+        setOrderingEnabled(data ? data.studentOrderingEnabled !== false : true);
+        // Only trust a banner that carries everything next/Image needs; a half-written
+        // doc should fall back to the bundled image, not render broken.
+        const b = data?.studentBanner;
+        setBanner(
+          b && typeof b.url === 'string' && b.url && typeof b.width === 'number' && typeof b.height === 'number'
+            ? (b as StudentBanner)
+            : null,
+        );
+      },
+      () => setOrderingEnabled(true), // on error, default open (and keep the fallback banner)
     );
     return () => unsub();
   }, []);
@@ -460,12 +474,16 @@ export default function StudentDashboardPage() {
         </div>
       )}
 
+      {/* Banner. Set from /report; the bundled image is the fallback so the dashboard
+          never renders an empty slot before the settings snapshot arrives, or if no
+          banner has ever been uploaded. Real dimensions come from the stored values so
+          an upload that is not 4:1 is not squashed into it. */}
       <div className="relative w-full overflow-hidden rounded-2xl shadow-sm">
         <Image
-          src="/RedBull.jpeg"
-          alt="Red Bull"
-          width={1600}
-          height={400}
+          src={banner?.url ?? "/RedBull.jpeg"}
+          alt={banner?.alt || "Canteen banner"}
+          width={banner?.width ?? 1600}
+          height={banner?.height ?? 400}
           priority
           className="w-full h-auto object-cover"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 100vw, 1200px"

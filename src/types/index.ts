@@ -204,6 +204,29 @@ export interface CreateRazorpayOrderRequest {
   note?: string;
 }
 
+/**
+ * The promotional banner at the top of the student dashboard, set from /report.
+ *
+ * Stored on `canteen_state/settings.studentBanner`, which is already public-read /
+ * manager-write in firestore.rules, so students pick up a change live with no extra
+ * read. Absent means fall back to the image bundled in /public.
+ */
+export interface StudentBanner {
+    /** Firebase Storage download URL. Already allowed by the CSP img-src and by
+     *  next.config.ts remotePatterns — an arbitrary host would be blocked. */
+    url: string;
+    /** Storage object path, kept so replacing the banner can delete the old file
+     *  instead of leaving the bucket to accumulate every image ever uploaded. */
+    path: string;
+    /** Real pixel dimensions, read from the file at upload time. Passing the actual
+     *  aspect ratio to next/Image is what stops a non-4:1 upload rendering squashed. */
+    width: number;
+    height: number;
+    alt?: string;
+    updatedAt?: any;
+    updatedByName?: string;
+}
+
 /** The student's last-used payment details, kept so a returning student skips the
  *  phone-entry and method-list screens.
  *
