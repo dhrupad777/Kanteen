@@ -255,7 +255,10 @@ function StudentCard({ student, monthLabel, expanded, onToggle, resetting, onPho
                     )}
                 </div>
 
-                {hasOrders && (
+                {/* Also shown when there is a custom photo: the remove control lives in
+                    the expanded panel, and without a chevron a student with no orders
+                    would look like a row that does not open at all. */}
+                {(hasOrders || student.hasCustomPhoto) && (
                     <ChevronDown className={cn(
                         "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
                         expanded && "rotate-180",

@@ -108,9 +108,13 @@ export function LeaderboardAvatar({
         } catch (err: any) {
             toast({
                 title: "Could not update photo",
+                // Both failure modes here are "the rules for this are not live yet",
+                // which is unguessable from the SDK's own wording. Name the file.
                 description: err?.code === "storage/unauthorized"
-                    ? "Storage rules rejected the upload. Deploy storage.rules and try again."
-                    : err?.message || "Something went wrong.",
+                    ? "Storage rules rejected the upload. Deploy storage.rules, then try again."
+                    : err?.code === "permission-denied"
+                        ? "Firestore rules rejected the change. Deploy firestore.rules (it needs customPhotoURL on the users allowlist), then try again."
+                        : err?.message || "Something went wrong.",
                 variant: "destructive",
             });
         } finally {
@@ -133,7 +137,13 @@ export function LeaderboardAvatar({
             toast({ title: "Back to your Google photo" });
             setOpen(false);
         } catch (err: any) {
-            toast({ title: "Could not remove photo", description: err?.message, variant: "destructive" });
+            toast({
+                title: "Could not remove photo",
+                description: err?.code === "permission-denied"
+                    ? "Firestore rules rejected the change. Deploy firestore.rules, then try again."
+                    : err?.message,
+                variant: "destructive",
+            });
         } finally {
             setBusy(null);
         }

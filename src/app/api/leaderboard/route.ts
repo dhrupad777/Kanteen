@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
 import { toOrderNumber } from '@/lib/order-normalize';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
+import { isExcludedFromStudentLists } from '@/lib/student-roster';
 import type { LeaderboardEntry, LeaderboardResponse } from '@/types';
 
 /**
@@ -150,7 +151,10 @@ async function getRoster() {
     for (const doc of usersSnap.docs) {
         const data = doc.data();
         const email = typeof data?.email === 'string' ? data.email : '';
-        if (email && staffEmails.has(email.toLowerCase())) {
+        // Shared with the Students directory so the two owner views cannot disagree
+        // about who is a student. Carries the exception for staff who are also real
+        // students — see lib/student-roster.ts.
+        if (isExcludedFromStudentLists(email, staffEmails)) {
             staffUids.add(doc.id);
             continue;
         }

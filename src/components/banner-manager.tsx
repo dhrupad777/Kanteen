@@ -174,7 +174,9 @@ export function BannerManager() {
                 title: "Upload failed",
                 description: err?.code === "storage/unauthorized"
                     ? "Storage rules rejected the upload. Deploy storage.rules, then try again."
-                    : err?.message || "Something went wrong.",
+                    : err?.code === "permission-denied"
+                        ? "Firestore rules rejected the change. Check you are signed in as the owner account."
+                        : err?.message || "Something went wrong.",
                 variant: "destructive",
             });
         } finally {

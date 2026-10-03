@@ -4,6 +4,7 @@ import { getStorage as getAdminStorage } from 'firebase-admin/storage';
 import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
 import { toOrderNumber, normalizeOrderItems } from '@/lib/order-normalize';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
+import { isExcludedFromStudentLists } from '@/lib/student-roster';
 import type { StudentDirectoryEntry, StudentDirectoryResponse, StudentOrderSummary } from '@/types';
 
 /**
@@ -105,7 +106,7 @@ async function buildDirectory(month: string): Promise<StudentDirectoryResponse> 
     for (const doc of usersSnap.docs) {
         const data = doc.data();
         const email = typeof data?.email === 'string' ? data.email : '';
-        if (email && staffEmails.has(email.toLowerCase())) continue;
+        if (isExcludedFromStudentLists(email, staffEmails)) continue;
 
         const found = byUid.get(doc.id);
         byUid.delete(doc.id);
