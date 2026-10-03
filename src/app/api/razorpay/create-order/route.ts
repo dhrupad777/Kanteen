@@ -7,6 +7,12 @@ import type { CreateRazorpayOrderRequest, CreateRazorpayOrderResponse, CheckoutI
 import { calculatePaymentBreakdown } from '@/lib/payment-fee';
 import { isNoParcelCategory } from '@/lib/parcel-categories';
 import { calculateParcelCharge, type ParcelItem } from '@/lib/parcel-calc';
+import {
+    CLOSING_GRACE_MIN,
+    describeWindows,
+    isCategoryAvailableAt,
+    istMinutesOfDay,
+} from '@/lib/menu-availability';
 
 /**
  * Kitchen hours: 8:00 AM – 8:45 PM IST.
@@ -137,6 +143,28 @@ export async function POST(request: NextRequest) {
             const menuItemData = menuItemDoc.data()!;
             if (!menuItemData?.isAvailable || !menuItemData?.isActive) {
                 return NextResponse.json({ error: `Item "${item.name}" is currently unavailable` }, { status: 400 });
+            }
+
+            // ====== CATEGORY TIME WINDOW ======
+            // The kitchen does not cook everything all day. The order page greys these
+            // out, but that is a hint, not a control: the category is re-checked here
+            // against the server clock so a crafted request cannot buy dosa at 9am.
+            //
+            // Grace is applied to the CLOSING edge only, so a student who was already
+            // checking out when the lunch line ended can still pay. It is never applied
+            // to the opening edge — ordering before the food exists is the thing being
+            // prevented. kitchen24x7 bypasses windows, matching how it already bypasses
+            // the kitchen-hours gate above.
+            if (!kitchen24x7) {
+                const itemCategory = (menuItemData.category as string) || '';
+                const available = isCategoryAvailableAt(itemCategory, istMinutesOfDay(), {
+                    graceMin: CLOSING_GRACE_MIN,
+                });
+                if (!available) {
+                    return NextResponse.json({
+                        error: `"${item.name}" is only available ${describeWindows(itemCategory)}`,
+                    }, { status: 400 });
+                }
             }
             const serverPrice = menuItemData.price;
             if (typeof serverPrice !== 'number' || serverPrice < 0 || serverPrice > MAX_PRICE_PER_ITEM) {

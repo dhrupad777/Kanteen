@@ -8,19 +8,33 @@ import { Plus, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { motion, AnimatePresence } from "framer-motion";
+import { Clock } from "lucide-react";
+import { useIstMinute } from "@/hooks/use-ist-minute";
+import { availabilityLabel, isCategoryAvailableAt } from "@/lib/menu-availability";
 
 interface MenuItemCardProps {
     item: MenuItem;
+    /** True when the 24/7 override is on, so category time windows do not apply.
+     *  Must track the server: create-order skips the same check under that flag, and a
+     *  card the student cannot add but the server would accept is worse than neither. */
+    ignoreTimeWindows?: boolean;
 }
 
-export function MenuItemCard({ item }: MenuItemCardProps) {
+export function MenuItemCard({ item, ignoreTimeWindows = false }: MenuItemCardProps) {
     const { getItemQty, addItem, increment, decrement } = useCart();
     const qty = getItemQty(item.id);
     const isUnavailable = !item.isAvailable;
     const isMRP = item.price === null;
 
+    // The kitchen is not cooking this yet. Distinct from isUnavailable, which is staff
+    // marking something sold out: this one resolves itself at a known time, so the card
+    // says when instead of just going flat.
+    const nowMin = useIstMinute();
+    const isTimeLocked = !ignoreTimeWindows && !isCategoryAvailableAt(item.category, nowMin);
+    const opensAtLabel = isTimeLocked ? availabilityLabel(item.category, nowMin) : null;
+
     const handleAdd = () => {
-        if (isUnavailable || isMRP) return;
+        if (isUnavailable || isMRP || isTimeLocked) return;
         navigator.vibrate?.([30, 10, 40]); // click-clack feel
         addItem(item);
     };
@@ -41,11 +55,40 @@ export function MenuItemCard({ item }: MenuItemCardProps) {
                 "relative flex flex-col p-4 rounded-2xl bg-white",
                 "border border-gray-100",
                 "transition-all duration-300 ease-out",
-                "hover:shadow-lg hover:shadow-gray-100 hover:border-gray-200",
-                "hover:-translate-y-0.5",
+                // No lift or shadow on hover while locked — a card that reacts like it is
+                // tappable and then does nothing is what reads as broken.
+                !isTimeLocked && "hover:shadow-lg hover:shadow-gray-100 hover:border-gray-200 hover:-translate-y-0.5",
+                "overflow-hidden",
                 isUnavailable && "opacity-50"
             )}
+            aria-disabled={isTimeLocked || undefined}
         >
+            {/* Locked veil. Deliberately NOT animated in: a card that is already locked
+                when the page loads must render locked, not fade into it, or it looks like
+                a loading skeleton. `initial={false}` suppresses the mount animation and
+                keeps only the exit, so the one moment worth animating — the window
+                opening while the student is watching — is a soft fade rather than a snap.
+
+                backdrop-blur frosts the content behind it while this element's own
+                children stay sharp, so the pill is legible without a second layer. Only
+                opacity animates; blur is a paint-heavy filter and is never transitioned. */}
+            <AnimatePresence initial={false}>
+                {isTimeLocked && (
+                    <motion.div
+                        key="time-lock"
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                        className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/55 backdrop-blur-[3px]"
+                    >
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200/80 bg-white px-2.5 py-1 shadow-sm">
+                            <Clock className="h-3 w-3 text-primary" />
+                            <span className="text-[11px] font-bold tracking-tight text-gray-700">
+                                {opensAtLabel}
+                            </span>
+                        </span>
+                    </motion.div>
+                )}
+            </AnimatePresence>
             {/* Item info */}
             <div className="flex-1 mb-3">
                 <h4 className="font-medium text-gray-900 text-sm leading-tight line-clamp-2">

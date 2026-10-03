@@ -373,7 +373,7 @@ function OrderContent() {
                                         ) : (
                                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                                                 {filteredItems.map((item) => (
-                                                    <MenuItemCard key={item.id} item={item} />
+                                                    <MenuItemCard key={item.id} item={item} ignoreTimeWindows={kitchen24x7} />
                                                 ))}
                                             </div>
                                         )}
@@ -393,6 +393,7 @@ function OrderContent() {
                                                         items={items}
                                                         icon={CATEGORY_ICONS[cat.value]}
                                                         image={CATEGORY_IMAGES[cat.value]}
+                                                        ignoreTimeWindows={kitchen24x7}
                                                     />
                                                 </Suspense>
                                             );
