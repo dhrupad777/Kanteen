@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Lock } from "lucide-react";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { LeaderboardAvatar } from "@/components/leaderboard-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
@@ -30,12 +30,12 @@ function Row({ entry }: { entry: LeaderboardEntry }) {
                 {MEDALS[entry.rank - 1] ?? entry.rank}
             </span>
 
-            <Avatar className="h-8 w-8 shrink-0">
-                {entry.photoURL && <AvatarImage src={entry.photoURL} alt="" />}
-                <AvatarFallback className="bg-orange-100 text-xs font-bold text-orange-700">
-                    {entry.displayName.charAt(0).toUpperCase()}
-                </AvatarFallback>
-            </Avatar>
+            <LeaderboardAvatar
+                displayName={entry.displayName}
+                photoURL={entry.photoURL}
+                isYou={entry.isYou}
+                className="h-8 w-8"
+            />
 
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                 {entry.displayName}
@@ -83,13 +83,16 @@ function YourRank({ entry, totalRanked }: { entry: LeaderboardEntry | null; tota
                 </span>
             )}
 
-            {entry?.photoURL && (
-                <Avatar className="h-8 w-8 shrink-0 ring-2 ring-orange-300">
-                    <AvatarImage src={entry.photoURL} alt="" />
-                    <AvatarFallback className="bg-orange-100 text-xs font-bold text-orange-700">
-                        {entry.displayName.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                </Avatar>
+            {/* Rendered whether or not there is a photo: this is the student's own row,
+                and it is the one place the "use your own photo" action can be found. */}
+            {entry && (
+                <LeaderboardAvatar
+                    displayName={entry.displayName}
+                    photoURL={entry.photoURL}
+                    isYou
+                    ringed
+                    className="h-8 w-8"
+                />
             )}
         </div>
     );

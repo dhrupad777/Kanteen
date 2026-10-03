@@ -100,6 +100,9 @@ export interface StudentDirectoryEntry {
   name: string;
   email: string;
   photoURL: string | null;
+  /** True when this student replaced their Google picture. Drives the owner's reset
+   *  control, which is the only way to take down a photo the campus should not see. */
+  hasCustomPhoto: boolean;
   /** Sum over COLLECTED orders only, so it agrees with the leaderboard. */
   spent: number;
   /** Length of `orders` — paid orders in the month, collected or not. */

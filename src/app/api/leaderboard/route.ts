@@ -159,7 +159,12 @@ async function getRoster() {
             // users/{uid}.name is the stable one — auth-provider deliberately never
             // overwrites it after the first sign-in.
             name: typeof data?.name === 'string' && data.name.trim() ? data.name : '',
-            photoURL: typeof data?.photoURL === 'string' && data.photoURL ? data.photoURL : null,
+            // customPhotoURL wins when set: a student who replaced their Google
+            // picture should see that choice on the board. Falls back silently, so a
+            // cleared or malformed value just shows the Google photo again.
+            photoURL: (typeof data?.customPhotoURL === 'string' && data.customPhotoURL)
+                ? data.customPhotoURL
+                : (typeof data?.photoURL === 'string' && data.photoURL ? data.photoURL : null),
             // No createdAt (very old docs) sorts last among equal spend.
             joinedAt: toMillis(data?.createdAt) ?? Number.MAX_SAFE_INTEGER,
         });

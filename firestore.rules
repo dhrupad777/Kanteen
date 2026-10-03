@@ -129,8 +129,20 @@ service cloud.firestore {
     match /students/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && profileKeysAllowed();
+      // customPhotoURL / customPhotoPath let a student override the Google picture
+      // shown on the leaderboard. Added to the allowlist explicitly: the point of this
+      // list is that a student cannot invent fields (`role: admin` being the one that
+      // matters), so new ones are opened deliberately, one at a time.
+      //
+      // The URL itself is not constrained here. It does not need to be: storage.rules
+      // only lets a student write under avatars/{their own uid}, and the CSP img-src
+      // only renders Storage and Google hosts, so the worst available misuse is
+      // pointing at an image that is already public on the same board.
       allow update: if isOwner(userId)
-        && onlyModifiesFields(['name', 'email', 'photoURL', 'lastLoginAt', 'updatedAt']);
+        && onlyModifiesFields([
+             'name', 'email', 'photoURL', 'lastLoginAt', 'updatedAt',
+             'customPhotoURL', 'customPhotoPath'
+           ]);
       allow delete, list: if false;
     }
 

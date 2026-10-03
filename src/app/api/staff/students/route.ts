@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { FieldValue } from 'firebase-admin/firestore';
+import { getStorage as getAdminStorage } from 'firebase-admin/storage';
 import { getAdminDb, getAdminAuth } from '@/lib/firebase-admin';
 import { toOrderNumber, normalizeOrderItems } from '@/lib/order-normalize';
 import { rateLimit, getClientIP } from '@/lib/rate-limit';
@@ -119,7 +121,12 @@ async function buildDirectory(month: string): Promise<StudentDirectoryResponse> 
             uid: doc.id,
             name,
             email,
-            photoURL: typeof data?.photoURL === 'string' && data.photoURL ? data.photoURL : null,
+            // Show the owner what students actually see, so a photo being moderated is
+            // the one on screen rather than the Google original behind it.
+            photoURL: (typeof data?.customPhotoURL === 'string' && data.customPhotoURL)
+                ? data.customPhotoURL
+                : (typeof data?.photoURL === 'string' && data.photoURL ? data.photoURL : null),
+            hasCustomPhoto: typeof data?.customPhotoURL === 'string' && !!data.customPhotoURL,
             // totalPrice is fractional (Razorpay fee gross-up), so an unrounded
             // sum renders as ₹745.5800000000002.
             spent: Math.round((found?.spent ?? 0) * 100) / 100,
@@ -136,6 +143,7 @@ async function buildDirectory(month: string): Promise<StudentDirectoryResponse> 
             name: found.fallbackName || 'Unknown student',
             email: '',
             photoURL: null,
+            hasCustomPhoto: false,
             spent: Math.round(found.spent * 100) / 100,
             orderCount: found.orders.length,
             orders: found.orders.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
@@ -193,5 +201,82 @@ export async function GET(request: NextRequest) {
     } catch (error: any) {
         console.error('Student directory error:', error instanceof Error ? error.message : 'Unknown error');
         return NextResponse.json({ error: 'Failed to load students' }, { status: 500 });
+    }
+}
+
+/**
+ * DELETE /api/staff/students?uid=...
+ *
+ * Clears a student's custom leaderboard photo, putting them back on their Google
+ * picture. Exists because those photos are visible to the whole campus: without a
+ * moderation path the only remedy for an inappropriate upload would be the Firebase
+ * console. Owner-only, the same gate as the directory itself.
+ *
+ * Does not stop them uploading again — that would need a per-student block, which was
+ * deliberately left out for now.
+ */
+export async function DELETE(request: NextRequest) {
+    const clientIP = getClientIP(request);
+
+    try {
+        const { success: rateLimitOk } = rateLimit(`students-photo:${clientIP}`, 30, 60000);
+        if (!rateLimitOk) {
+            return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+        }
+
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        let decodedToken;
+        try {
+            decodedToken = await getAdminAuth().verifyIdToken(authHeader.split('Bearer ')[1]);
+        } catch {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        if (decodedToken.isOwner !== true) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        const uid = request.nextUrl.searchParams.get('uid');
+        if (!uid || typeof uid !== 'string' || uid.length > 128) {
+            return NextResponse.json({ error: 'A student uid is required' }, { status: 400 });
+        }
+
+        const db = getAdminDb();
+        const userRef = db.collection('users').doc(uid);
+        const snap = await userRef.get();
+        if (!snap.exists) {
+            return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+        }
+
+        const storedPath = snap.data()?.customPhotoPath;
+
+        // Firestore first: once the field is gone the photo stops rendering anywhere,
+        // which is the outcome that actually matters.
+        await userRef.set({
+            customPhotoURL: FieldValue.delete(),
+            customPhotoPath: FieldValue.delete(),
+        }, { merge: true });
+
+        // Then clear the file. Best-effort and explicitly bucket-named, because the
+        // admin app is initialised without a default storageBucket. An orphaned object
+        // is harmless and must not turn a successful takedown into an error.
+        if (typeof storedPath === 'string' && storedPath) {
+            const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+            if (bucketName) {
+                try {
+                    await getAdminStorage().bucket(bucketName).file(storedPath).delete();
+                } catch (e: any) {
+                    console.warn('Avatar file delete failed (non-fatal):', storedPath, e?.message);
+                }
+            }
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error('Reset student photo error:', error instanceof Error ? error.message : 'Unknown error');
+        return NextResponse.json({ error: 'Failed to reset photo' }, { status: 500 });
     }
 }

@@ -32,6 +32,26 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
+    // ---------- Student leaderboard avatars ----------
+    // A student may replace the Google profile picture shown next to their name on
+    // the leaderboard. Opt-in and self-service; nothing prompts them to set one.
+    match /avatars/{userId}/{fileName} {
+      // Public read, for the same reason as banners: these render for every student
+      // on the board, and the uploader's credentials are not involved in that fetch.
+      allow read: if true;
+
+      // Write only to your OWN folder. This is the control that stops a student
+      // replacing someone else's picture - the path segment is matched against the
+      // caller's uid, so there is no way to write outside it.
+      //
+      // 300 KB is far above what the client produces (it re-encodes to a 256px WebP,
+      // typically 10-20 KB) and is here to bound a hand-crafted upload, not the app.
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 300 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
     // ---------- Everything else ----------
     // No other path is in use. Deny rather than leave the bucket open.
     match /{allPaths=**} {

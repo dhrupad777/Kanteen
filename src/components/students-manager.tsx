@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { addMonths, format } from "date-fns";
-import { Loader2, Search, Users, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { Loader2, Search, Users, ChevronLeft, ChevronRight, ChevronDown, ImageOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { OrderRow } from "@/components/order-row";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { StudentDirectoryEntry, StudentDirectoryResponse } from "@/types";
 
@@ -31,6 +32,34 @@ export function StudentsManager() {
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState("");
     const [expandedUid, setExpandedUid] = useState<string | null>(null);
+    /** Bumped after a photo reset to re-pull the directory, so the row shows the
+     *  student's Google picture rather than a stale local guess at it. */
+    const [reloadKey, setReloadKey] = useState(0);
+    const [resettingUid, setResettingUid] = useState<string | null>(null);
+    const { toast } = useToast();
+
+    /** Takes down a student's custom leaderboard photo. The only moderation path for
+     *  an image that the whole campus can see. */
+    const handlePhotoReset = async (student: StudentDirectoryEntry) => {
+        if (!user) return;
+        if (!window.confirm(`Remove ${student.name}'s custom leaderboard photo? They go back to their Google picture and can upload another.`)) return;
+
+        setResettingUid(student.uid);
+        try {
+            const token = await user.getIdToken();
+            const res = await fetch(`/api/staff/students?uid=${encodeURIComponent(student.uid)}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+            toast({ title: "Photo removed", description: `${student.name} is back to their Google picture.` });
+            setReloadKey((k) => k + 1);
+        } catch {
+            toast({ title: "Could not remove photo", variant: "destructive" });
+        } finally {
+            setResettingUid(null);
+        }
+    };
 
     useEffect(() => {
         if (!user) return;
@@ -59,7 +88,7 @@ export function StudentsManager() {
         })();
 
         return () => { active = false; };
-    }, [user, month]);
+    }, [user, month, reloadKey]);
 
     const monthDate = new Date(`${month}-01T00:00:00`);
     const monthLabel = format(monthDate, 'MMMM yyyy');
@@ -152,6 +181,8 @@ export function StudentsManager() {
                                     student={student}
                                     monthLabel={monthLabel}
                                     expanded={expandedUid === student.uid}
+                        resetting={resettingUid === student.uid}
+                        onPhotoReset={() => handlePhotoReset(student)}
                                     onToggle={() => setExpandedUid(expandedUid === student.uid ? null : student.uid)}
                                 />
                             ))}
@@ -168,9 +199,11 @@ interface StudentCardProps {
     monthLabel: string;
     expanded: boolean;
     onToggle: () => void;
+    resetting: boolean;
+    onPhotoReset: () => void;
 }
 
-function StudentCard({ student, monthLabel, expanded, onToggle }: StudentCardProps) {
+function StudentCard({ student, monthLabel, expanded, onToggle, resetting, onPhotoReset }: StudentCardProps) {
     const hasOrders = student.orderCount > 0;
 
     return (
@@ -188,7 +221,20 @@ function StudentCard({ student, monthLabel, expanded, onToggle }: StudentCardPro
                 </Avatar>
 
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{student.name}</p>
+                    <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                        {student.name}
+                        {student.hasCustomPhoto && (
+                            // Flags that the picture above is one the student chose, so the
+                            // owner can spot uploads at a glance while scrolling. Plain text,
+                            // not a control: the row itself is a button and cannot nest one.
+                            <span
+                                title="Using their own uploaded photo"
+                                className="shrink-0 rounded-full bg-sky-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-sky-600"
+                            >
+                                Custom
+                            </span>
+                        )}
+                    </p>
                     {student.email && (
                         <p className="truncate text-xs text-muted-foreground">{student.email}</p>
                     )}
@@ -219,6 +265,26 @@ function StudentCard({ student, monthLabel, expanded, onToggle }: StudentCardPro
 
             {expanded && (
                 <div className="space-y-3 border-t border-slate-100 bg-slate-50/50 p-4">
+                    {student.hasCustomPhoto && (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2">
+                            <p className="text-xs text-sky-900">
+                                This student uploaded their own leaderboard photo.
+                            </p>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={onPhotoReset}
+                                disabled={resetting}
+                                className="shrink-0 gap-1.5 border-sky-200 text-xs font-bold hover:bg-white"
+                            >
+                                {resetting
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : <ImageOff className="h-3 w-3" />}
+                                Remove photo
+                            </Button>
+                        </div>
+                    )}
+
                     {hasOrders ? (
                         student.orders.map((order) => (
                             <OrderRow key={order.id} order={order} showName={false} />
