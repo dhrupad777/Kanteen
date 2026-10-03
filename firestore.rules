@@ -129,6 +129,18 @@ service cloud.firestore {
     match /students/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && profileKeysAllowed();
+      allow update: if isOwner(userId)
+        && onlyModifiesFields(['name', 'email', 'photoURL', 'lastLoginAt', 'updatedAt']);
+      allow delete, list: if false;
+    }
+
+    // ====== USER PROFILES ======
+    // NOTE: /students and /managers below have near-identical blocks. This is the one
+    // the application actually reads and writes (auth-provider, and the leaderboard via
+    // the Admin SDK) - a change meant for student profiles belongs HERE.
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && profileKeysAllowed();
       // customPhotoURL / customPhotoPath let a student override the Google picture
       // shown on the leaderboard. Added to the allowlist explicitly: the point of this
       // list is that a student cannot invent fields (`role: admin` being the one that
@@ -143,15 +155,6 @@ service cloud.firestore {
              'name', 'email', 'photoURL', 'lastLoginAt', 'updatedAt',
              'customPhotoURL', 'customPhotoPath'
            ]);
-      allow delete, list: if false;
-    }
-
-    // ====== USER PROFILES ======
-    match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && profileKeysAllowed();
-      allow update: if isOwner(userId)
-        && onlyModifiesFields(['name', 'email', 'photoURL', 'lastLoginAt', 'updatedAt']);
       allow delete, list: if false;
     }
 
