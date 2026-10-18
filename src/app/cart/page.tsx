@@ -214,7 +214,7 @@ export default function CartPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gray-50 flex flex-col">
             {/* Header */}
             <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-xl border-b border-gray-100 px-4 py-4">
                 <div className="flex items-center justify-between max-w-2xl mx-auto">
@@ -236,7 +236,7 @@ export default function CartPage() {
             </div>
 
             {/* Cart Items */}
-            <div className="max-w-2xl mx-auto px-4 py-6 mb-40">
+            <div className="w-full max-w-2xl mx-auto px-4 py-6 flex-1">
                 {/* Unavailability warning banner */}
                 {hasUnavailableItems && (
                     <motion.div
@@ -318,8 +318,8 @@ export default function CartPage() {
                 </div>
             </div>
 
-            {/* Fixed Bottom Summary */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-6 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
+            {/* Bottom Summary — sticky (not fixed) so the page scrolls past it and the last items are never hidden */}
+            <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 pb-6 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
                 <div className="max-w-2xl mx-auto space-y-4">
                     {/* Order Summary */}
                     <div className="space-y-3">
