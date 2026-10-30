@@ -17,7 +17,7 @@ export interface ParcelBreakdown {
     mainCourseParcel: number;
     /** ₹5 × qty for each parcelled container-category item. */
     containerParcel: number;
-    /** ₹5 per distinct bag category that has parcelled items. */
+    /** Flat ₹5 if any bag-category item is parcelled (one bag covers them all). */
     bagParcel: number;
     /** Flat ₹5 if extras are parcelled without Main Course; 0 otherwise. */
     dailyRegularsParcel: number;
@@ -39,12 +39,10 @@ export function calculateParcelCharge(items: ParcelItem[]): ParcelBreakdown {
     );
     const containerParcel = parcelledContainerItems.reduce((sum, i) => sum + 5 * i.qty, 0);
 
-    // 3. Bag items: flat ₹5 per distinct bag category that has parcelled items
-    //    e.g. 3 dosas = ₹5, 3 dosas + 2 sandwiches = ₹10
-    const parcelledBagCategories = new Set(
-        items.filter(i => isBagCategory(i.category) && i.wantParcel).map(i => i.category),
-    );
-    const bagParcel = parcelledBagCategories.size * 5;
+    // 3. Bag items: one flat ₹5 covers every parcelled bag item, whatever the category
+    //    e.g. 3 dosas = ₹5, 3 dosas + 2 sandwiches = ₹5
+    const hasParcelledBagItems = items.some(i => isBagCategory(i.category) && i.wantParcel);
+    const bagParcel = hasParcelledBagItems ? 5 : 0;
 
     // 4. Daily regulars: free with Main Course, else flat ₹5
     const hasParcelledRegulars = items.some(

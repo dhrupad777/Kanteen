@@ -2,8 +2,8 @@
  * Parcel packaging classification by menu category.
  *
  * - Container categories need a physical container: ₹5 per item.
- * - Bag categories only need a packing bag: flat ₹5 regardless of quantity
- *   (upgrades to ₹5/item when a container item is also parcelled).
+ * - Bag categories only need a packing bag: one flat ₹5 covers all of them,
+ *   regardless of quantity or how many bag categories are in the cart.
  * - No-parcel categories are never charged and have no toggle (tea & beverages).
  * - daily_menu (Main Course) is always parcelled at a flat ₹5 total.
  * - daily_regulars (Extra Items) are free when Main Course is in cart,
