@@ -20,6 +20,7 @@ import { CouponEntryForm } from '@/components/coupon-entry-form';
 import { Switch } from '@/components/ui/switch';
 import { usePrinter } from '@/hooks/use-printer';
 import { usePrintQueueRealtime } from '@/hooks/use-print-queue-realtime';
+import { useNewOrderAlert } from '@/hooks/use-new-order-alert';
 import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import Link from 'next/link';
@@ -240,6 +241,14 @@ export default function KitchenPage() {
             }
         });
     }, [orders, ordersLoading, toast, markPrinted]);
+
+    // ── New-order chime + toast — independent of the printer ─────────────────
+    useNewOrderAlert(orders, ordersLoading, (newOrders) => {
+        newOrders.forEach(o => toast({
+            title: `New order — Token ${o.token}`,
+            description: o.userName ? `Order for ${o.userName}` : 'Ready to prepare',
+        }));
+    });
 
     // ── Online orders only (Razorpay-paid, token 201–999) ───────────────────
     const onlineOrders = orders.filter(o =>
